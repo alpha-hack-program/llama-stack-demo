@@ -4,6 +4,20 @@ Welcome to the Eligibility Assessment System powered by Llama Stack and Model Co
 This system helps assess eligibility for Family Care Unpaid Leave Support based on the Republic of Lysmark's Act No. 2025/47-SA.
 To get started quickly, jump straight to [installation](#install).
 
+## Trip Report
+
+I started with an MCP Server using TypeScript generated using Cursor.ai straight from legal documents. It tried to cover all the legal elements, it was complex and the logic tricky, several iterations to fine tune the descriptions to make it kind of work in a small model (SLM) like IBM Granite and Llama 3.2 (~7B both of them). I changed my strategy and also the programing language, from TypeScript to Rust and from the full logic generated from the legal documents to a decision table generated with Cursor.ai but with much more guidance (and simplification) from my side. This time it worked pretty well with Claude Desktop but not quite with the SLMs, the latest iteration had to do with the names of some variables, is_single_parent_family and number_of_children_after...
+
+The inner to outer loop:
+- decision table
+- code
+- unit testing
+- MCP Inspector
+- Claude Desktop
+- Llama Stack Local with models in RHOAI
+- Llama Stack on RHOAI
+
+
 ## Detailed description 
 
 The Eligibility Assessment MCP Llama Stack system is an intelligent solution for evaluating eligibility for Family Care Unpaid Leave Support based on the Republic of Lysmark's legislation (Act No. 2025/47-SA and related regulations). The system combines the power of Llama Stack with Model Context Protocol (MCP) servers and Retrieval Augmented Generation (RAG) to provide accurate, context-aware assessments.
@@ -28,7 +42,6 @@ Experience the Eligibility Assessment System through the Llama Stack Playground 
 - Get detailed assessments based on the legal framework of Act No. 2025/47-SA
 - Understand the documentation needed for applications
 - Learn about financial assistance amounts and duration limits
-
 
 ### Architecture diagrams
 

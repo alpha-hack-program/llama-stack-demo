@@ -5,10 +5,11 @@ app: eligibility-lsd
 namespace: eligibility-mcp-llamastack
 partOf: eligibility-mcp-llamastack
 
-# lsdName: rh-dev
-lsdImage: quay.io/opendatahub/llama-stack:odh
-lsdPort: 8321
+lsdName: rh-dev
+# lsdImage: quay.io/opendatahub/llama-stack:odh
+lsdImage: quay.io/opendatahub/llama-stack:rhoai-v2.23-latest
 lsdBaseDir: /opt/app-root/src
+lsdPort: 8321
 
 lsdEmbeddingModel: granite-embedding-125m
 lsdEmbeddingDimension: 768
@@ -27,36 +28,6 @@ fmsOchestratorUrl: http://localhost:8080
 docsFolder: /data/docs
 
 models:
-  # - name: granite-3-3-8b
-  #   displayName: Granite 3.3 8B
-  #   id: ibm-granite/granite-3.3-8b-instruct
-  #   image: quay.io/redhat-ai-services/modelcar-catalog:granite-3.3-8b-instruct
-  #   maxModelLen: '15000'
-  #   maxTokens: '4096' # llama stack vllm max token, default is 4096
-  #   tlsVerify: false
-  #   externalAccess: true
-  #   runtime:
-  #     templateName: vllm-serving-template
-  #     templateDisplayName: vLLM Serving Template
-  #     image: quay.io/modh/vllm:rhoai-2.23-cuda
-  #     resources:
-  #       limits:
-  #         cpu: '8'
-  #         memory: 24Gi
-  #       requests:
-  #         cpu: '6'
-  #         memory: 24Gi
-  #   accelerator:
-  #     type: nvidia.com/gpu
-  #     max: '1'
-  #     min: '1'
-  #     # productName: NVIDIA-A10G
-  #   args:
-  #     - '--enable-auto-tool-choice'
-  #     - '--tool-call-parser'
-  #     - 'granite'
-  #     - '--chat-template'
-  #     - '/app/data/template/tool_chat_template_granite.jinja'
   - name: llama-3-1-8b-w4a16
     displayName: Llama 3.1 8B
     id: RedHatAI/Meta-Llama-3.1-8B-Instruct-quantized.w4a16
@@ -100,7 +71,7 @@ mcpServers:
       uri: https://github.com/alpha-hack-program/eligibility-engine-mcp-rs.git
       ref: main
       path: .
-    image: quay.io/atarazana/eligibility-engine-mcp-rs:latest
+    image: quay.io/atarazana/eligibility-engine-mcp-rs:1.1.2
     mcp_transport: "sse"
     protocol: "http"
     host: eligibility-engine
@@ -110,7 +81,34 @@ mcpServers:
     resources:
       limits:
         cpu: 500m
-        memory: 256Mi
+        memory: 128Mi
       requests:
         cpu: 250m
         memory: 128Mi
+    env:
+      - name: RUST_LOG
+        value: "debug"
+  - id: mcp::compatibility-engine
+    provider_id: model-context-protocol
+    runtime: rust
+    vcs:
+      uri: https://github.com/alpha-hack-program/compatibility-engine-mcp-rs.git
+      ref: main
+      path: .
+    image: quay.io/atarazana/compatibility-engine-mcp-rs:1.2.0
+    mcp_transport: "sse"
+    protocol: "http"
+    host: compatibility-engine
+    port: 8000
+    uri: "/sse"
+    replicas: 1
+    resources:
+      limits:
+        cpu: 500m
+        memory: 128Mi
+      requests:
+        cpu: 250m
+        memory: 128Mi
+    env:
+      - name: RUST_LOG
+        value: "debug"
