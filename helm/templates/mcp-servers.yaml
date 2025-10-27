@@ -9,7 +9,6 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: {{ .host }}
-  namespace: {{ $namespace }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -29,7 +28,6 @@ metadata:
     app.kubernetes.io/part-of: {{ $partOf }}
     app.openshift.io/runtime: {{ .runtime | default "nodejs" }}
   name: {{ .host }}
-  namespace: {{ $namespace }}
 spec:
   progressDeadlineSeconds: 600
   replicas: {{ .replicas | default 1 }}
@@ -141,4 +139,79 @@ spec:
     name: {{ .host }}
     weight: 100
   wildcardPolicy: None
+{{- if .rbac }}
+{{- $clusterWide := .rbac.clusterWide }}
+{{- $host := .host }}
+---
+{{- with .rbac.rules }}
+# If clusterWide is true, create a ClusterRole and ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+{{- if $clusterWide }}
+kind: ClusterRole
+{{- else }}
+kind: Role
+{{- end }}
+metadata:
+  name: {{ $host }}-{{ if $clusterWide }}clusterrole{{ else }}role{{ end }}
+  {{- if not $clusterWide }}
+  namespace: {{ $namespace }}
+  {{- end }}
+rules:
+  {{- range . }}
+    - apiGroups: 
+        {{- if eq (len .apiGroups) 1 }}
+        {{- if eq (index .apiGroups 0) "" }}
+        - ""
+        {{- else }}
+        {{- range .apiGroups }}
+        - {{ . }}
+        {{- end }}
+        {{- end }}
+        {{- else }}
+        {{- range .apiGroups }}
+        - {{ . }}
+        {{- end }}
+        {{- end }}
+      resources: 
+        {{- range .resources }}
+        - {{ . }}
+        {{- end }}
+      verbs: 
+        {{- range .verbs }}
+        - {{ . }}
+        {{- end }}
+    {{- end }}
+  {{- end }}
+---
+{{- if $clusterWide }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $host }}-clusterrolebinding
+  namespace: {{ $namespace }}
+roleRef:
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  name: {{ $host }}-clusterrole
+subjects:
+  - kind: ServiceAccount
+    name: {{ $host }}
+    namespace: {{ $namespace }}
+{{- else }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $host }}-rolebinding
+  namespace: {{ $namespace }}
+roleRef:
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: Role
+  name: {{ $host }}-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ $host }}
+    namespace: {{ $namespace }}
+{{- end }}
+{{- end }}
 {{- end }}

@@ -38,7 +38,7 @@ models:
     runtime:
       templateName: vllm-serving-template
       templateDisplayName: vLLM Serving Template
-      image: quay.io/modh/vllm:rhoai-2.23-cuda
+      image: quay.io/modh/vllm:rhoai-2.25-cuda
       resources:
         limits:
           cpu: '8'
@@ -70,7 +70,7 @@ models:
     runtime:
       templateName: vllm-serving-template
       templateDisplayName: vLLM Serving Template
-      image: quay.io/modh/vllm:rhoai-2.23-cuda
+      image: quay.io/modh/vllm:rhoai-2.25-cuda
       resources:
         limits:
           cpu: '8'
@@ -145,3 +145,51 @@ mcpServers:
     env:
       - name: RUST_LOG
         value: "debug"
+    # rbac:
+    #   clusterWide: true
+    #   rules:
+    #     - apiGroups: [""]
+    #       resources: ["services"]
+    #       verbs: ["get", "list", "watch"]
+    #     - apiGroups: [""]
+    #       resources: ["endpoints"]
+    #       verbs: ["get", "list", "watch"]
+  - id: mcp::cluster-insights
+    provider_id: model-context-protocol
+    runtime: rust
+    vcs:
+      uri: https://github.com/alpha-hack-program/cluster-insights-mcp-rs.git
+      ref: main
+      path: .
+    image: quay.io/atarazana/cluster-insights-mcp-rs:1.2.1
+    mcp_transport: "sse"
+    protocol: "http"
+    host: cluster-insights
+    port: 8000
+    uri: "/sse"
+    replicas: 1
+    resources:
+      limits:
+        cpu: 500m
+        memory: 128Mi
+      requests:
+        cpu: 250m
+        memory: 128Mi
+    env:
+      - name: RUST_LOG
+        value: "debug"
+    rbac:
+      clusterWide: true
+      rules:
+        # Permissions to read node information for cluster capacity analysis
+        - apiGroups: [""]
+          resources: ["nodes"]
+          verbs: ["get", "list"]
+        # Permissions to read pod information for resource allocation analysis
+        - apiGroups: [""]
+          resources: ["pods"]
+          verbs: ["get", "list"]
+        # Permissions to read namespace information for namespace-level resource usage
+        - apiGroups: [""]
+          resources: ["namespaces"]
+          verbs: ["get", "list"]

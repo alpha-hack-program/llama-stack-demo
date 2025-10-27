@@ -2,7 +2,7 @@
 
 You can access it from project **{{ .Release.Namespace }}**
 
-This version uses configm from ConfigMap `{{ .Values.app }}-run`.
+This version uses configuration from ConfigMap `{{ .Values.app }}-run`.
 
 Models deployed:
 {{- range .Values.models }}

@@ -123,7 +123,7 @@ oc login ...
 ### Create the project
 
 ```bash
-PROJECT="eligibility-mcp-llamastack"
+PROJECT="llama-stack-demo"
 
 oc new-project ${PROJECT}
 ``` 
@@ -141,21 +141,21 @@ oc label namespace ${PROJECT} modelmesh-enabled=false opendatahub.io/dashboard=t
 This default delployment deploys one model... TODO.
 
 ```bash
-helm install eligibility-mcp-llamastack helm/ --namespace ${PROJECT} \
+helm install llama-stack-demo helm/ --namespace ${PROJECT} \
   --set namespace=${PROJECT} --timeout 10m
 ```
 
 If you have access to Intel Gaudi accelerators you could use this command which uses `helm/intel.values` instead:
 
 ```bash
-helm install eligibility-mcp-llamastack helm/ --namespace ${PROJECT} \
+helm install llama-stack-demo helm/ --namespace ${PROJECT} \
   --values helm/intel.yaml --set namespace=${PROJECT} --timeout 10m
 ```
 
 If you want an NVIDIA deployment with two models run this. TODO explain which models... bla.
 
 ```bash
-helm install eligibility-mcp-llamastack helm/ --namespace ${PROJECT} \
+helm install llama-stack-demo helm/ --namespace ${PROJECT} \
   --values helm/nvidia.yaml --set namespace=${PROJECT} --timeout 10m
 ```
 
@@ -186,7 +186,7 @@ Get the OpenShift AI Dashboard URL:
 oc get routes rhods-dashboard -n redhat-ods-applications
 ```
 
-Navigate to Data Science Projects -> eligibility-mcp-llamastack. You'll see the deployed models and workbenches.
+Navigate to Data Science Projects -> llama-stack-demo. You'll see the deployed models and workbenches.
 
 #### Option 2: Direct Access to Llama Stack Playground
 Get the Llama Stack Playground URL:
@@ -251,7 +251,7 @@ You are a helpful AI assistant that uses tools to help citizens of the Republic 
 Unistall the helm chart.
 
 ```bash
-helm uninstall eligibility-mcp-llamastack --namespace ${PROJECT}
+helm uninstall llama-stack-demo --namespace ${PROJECT}
 ```
 
 Delete all remaining objects like jobs created in hooks.
