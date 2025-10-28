@@ -10,9 +10,9 @@ lsdImage: registry.redhat.io/rhoai/odh-llama-stack-core-rhel9:v2.23
 lsdBaseDir: /opt/app-root/src
 lsdPort: 8321
 
-lsdEmbeddingModel: granite-embedding-125m
-lsdEmbeddingDimension: 768
-lsdEmbeddingModelProvider: sentence-transformers
+lsdEmbeddingModel: jina-embeddings-v3-gpu
+lsdEmbeddingDimension: 1024
+lsdEmbeddingModelProvider: jina-embeddings-v3-gpu
 lsdChunkSizeInTokens: 256
 
 lsdPlaygroundImage: quay.io/rh-aiservices-bu/llama-stack-playground:0.2.11
@@ -22,6 +22,9 @@ loaderDelay: 10
 loaderJobRetries: 30
 
 milvusDbPath: /tmp/milvus.db
+milvusUri: http://vectordb-milvus.rag-base:19530
+milvusToken: root:Milvus
+
 fmsOchestratorUrl: http://localhost:8080
 
 docsFolder: /data/docs
@@ -95,6 +98,36 @@ models:
       - llama3_json
       - --chat-template
       - /app/data/template/tool_chat_template_llama3.1_json.jinja
+
+  - name: jina-embeddings-v3-gpu # Matryoshka model run with vllm
+    displayName: Jina Embeddings v3 GPU
+    model: jinaai/jina-embeddings-v3
+    image: quay.io/atarazana/modelcar-catalog:jina-embeddings-v3
+    embeddingsModel: true
+    maxModelLen: '8192'
+    vectorDimension: 1024
+    externalAccess: true
+    runtime:
+      templateName: vllm-serving-template
+      templateDisplayName: vLLM Serving Template
+      image: quay.io/modh/vllm:rhoai-2.25-cuda
+      resources:
+        limits:
+          cpu: '2'
+          memory: 8Gi
+        requests:
+          cpu: '1'
+          memory: 4Gi
+    accelerator:
+      type: 'nvidia.com/gpu'
+      max: '1'
+      min: '1'
+      nodeSelector:
+        group: 'llama-stack-demo'
+        modelType: 'embeddings'
+    env:
+      - name: HF_HUB_OFFLINE
+        value: '0'
 
 mcpServers:
   - id: mcp::eligibility-engine

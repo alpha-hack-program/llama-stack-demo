@@ -1,62 +1,145 @@
-# Create a deployment, service and route for each of .Values.mcpServers
+{{/*
+MCP Servers Template - All-in-one (Nil-safe version)
+This template creates ServiceAccount, Deployment, Service, Route and RBAC resources for each MCP server
+*/}}
+
 {{- $appName := .Values.app }}
 {{- $namespace := .Values.namespace }}
 {{- $partOf := .Values.partOf }}
 
 {{- range .Values.mcpServers }}
+{{- $server := . }}
+{{- $host := .host }}
 ---
+# ServiceAccount for {{ $host }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: {{ .host }}
+  name: {{ $host }}
+  namespace: {{ $namespace }}
+  labels:
+    app: {{ $host }}
+    app.kubernetes.io/component: {{ $host }}
+    app.kubernetes.io/instance: {{ $host }}
+    app.kubernetes.io/name: {{ $host }}
+    app.kubernetes.io/part-of: {{ $partOf }}
+    {{- if .runtime }}
+    app.openshift.io/runtime: {{ .runtime }}
+    {{- end }}
+  {{- if .vcs }}
+  annotations:
+    app.openshift.io/vcs-ref: {{ .vcs.ref | quote }}
+    app.openshift.io/vcs-uri: {{ .vcs.uri | quote }}
+  {{- end }}
+
 ---
+# Deployment for {{ $host }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  name: {{ $host }}
+  namespace: {{ $namespace }}
+  labels:
+    app: {{ $host }}
+    app.kubernetes.io/component: {{ $host }}
+    app.kubernetes.io/instance: {{ $host }}
+    app.kubernetes.io/name: {{ $host }}
+    app.kubernetes.io/part-of: {{ $partOf }}
+    {{- if .runtime }}
+    app.openshift.io/runtime: {{ .runtime }}
+    {{- end }}
   annotations:
     argocd.argoproj.io/sync-wave: "1"
     alpha.image.policy.openshift.io/resolve-names: '*'
     app.openshift.io/route-disabled: "false"
-    app.openshift.io/vcs-ref: {{ .vcs.ref }}
-    app.openshift.io/vcs-uri: {{ .vcs.uri }}
+    {{- if .vcs }}
+    app.openshift.io/vcs-ref: {{ .vcs.ref | quote }}
+    app.openshift.io/vcs-uri: {{ .vcs.uri | quote }}
+    {{- end }}
     app.openshift.io/connects-to: '[{"apiVersion":"apps/v1","kind":"Deployment","name":"{{ $appName }}"}]'
-  labels:
-    app: {{ .host }}
-    app.kubernetes.io/component: {{ .host }}
-    app.kubernetes.io/instance: {{ .host }}
-    app.kubernetes.io/name: {{ .host }}
-    app.kubernetes.io/part-of: {{ $partOf }}
-    app.openshift.io/runtime: {{ .runtime | default "nodejs" }}
-  name: {{ .host }}
 spec:
   progressDeadlineSeconds: 600
   replicas: {{ .replicas | default 1 }}
   revisionHistoryLimit: 10
   selector:
     matchLabels:
-      app: {{ .host }}
+      app: {{ $host }}
+      deployment: {{ $host }}
   strategy:
+    {{- if .strategy }}
+    {{- toYaml .strategy | nindent 4 }}
+    {{- else }}
+    type: RollingUpdate
     rollingUpdate:
       maxSurge: 25%
       maxUnavailable: 25%
-    type: RollingUpdate
+    {{- end }}
   template:
     metadata:
       labels:
-        app: {{ .host }}
-        deployment: {{ .host }}
+        app: {{ $host }}
+        deployment: {{ $host }}
+      {{- if .podAnnotations }}
+      annotations:
+        {{- toYaml .podAnnotations | nindent 8 }}
+      {{- end }}
     spec:
-      serviceAccountName: {{ .host }}
+      serviceAccountName: {{ $host }}
+      {{- if .nodeSelector }}
+      nodeSelector:
+        {{- toYaml .nodeSelector | nindent 8 }}
+      {{- end }}
+      {{- if .affinity }}
+      affinity:
+        {{- toYaml .affinity | nindent 8 }}
+      {{- end }}
+      {{- if .tolerations }}
+      tolerations:
+        {{- toYaml .tolerations | nindent 8 }}
+      {{- end }}
+      {{- if .imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml .imagePullSecrets | nindent 8 }}
+      {{- end }}
+      {{- if .podSecurityContext }}
+      securityContext:
+        {{- toYaml .podSecurityContext | nindent 8 }}
+      {{- else }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      {{- end }}
       containers:
-        - image: {{ .image }}
-          imagePullPolicy: Always
-          name: {{ .host }}
+        - name: {{ $host }}
+          image: {{ .image }}
+          imagePullPolicy: {{ .imagePullPolicy | default "Always" }}
+          {{- if .securityContext }}
+          securityContext:
+            {{- toYaml .securityContext | nindent 12 }}
+          {{- else }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+          {{- end }}
           ports:
             - name: {{ .port }}-tcp
               containerPort: {{ .port }}
               protocol: TCP
-          terminationMessagePath: /dev/termination-log
-          terminationMessagePolicy: File
+          {{- if .livenessProbe }}
+          livenessProbe:
+            {{- toYaml .livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .readinessProbe }}
+          readinessProbe:
+            {{- toYaml .readinessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .startupProbe }}
+          startupProbe:
+            {{- toYaml .startupProbe | nindent 12 }}
+          {{- end }}
           {{- if .resources }}
           resources:
             {{- if .resources.limits }}
@@ -67,41 +150,90 @@ spec:
             {{- if .resources.requests }}
             requests:
               cpu: {{ .resources.requests.cpu | default "250m" }}
-              memory: {{ .resources.requests.memory | default "256mi" }}
+              memory: {{ .resources.requests.memory | default "256Mi" }}
             {{- end }}
+          {{- else }}
+          resources:
+            limits:
+              cpu: "1"
+              memory: 2Gi
+            requests:
+              cpu: 250m
+              memory: 256Mi
           {{- end }}
           env:
             - name: BIND_ADDRESS
               value: "0.0.0.0:{{ .port }}"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
             {{- if .env }}
             {{- range .env }}
             - name: {{ .name }}
-              value: {{ .value }}
+              {{- if .value }}
+              value: {{ .value | quote }}
+              {{- else if .valueFrom }}
+              valueFrom:
+                {{- toYaml .valueFrom | nindent 16 }}
+              {{- end }}
             {{- end }}
             {{- end }}
+          {{- if .volumeMounts }}
+          volumeMounts:
+            {{- toYaml .volumeMounts | nindent 12 }}
+          {{- end }}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+      {{- if .volumes }}
+      volumes:
+        {{- toYaml .volumes | nindent 8 }}
+      {{- end }}
       dnsPolicy: ClusterFirst
       restartPolicy: Always
       schedulerName: default-scheduler
-      securityContext: {}
-      terminationGracePeriodSeconds: 30
+      terminationGracePeriodSeconds: {{ .terminationGracePeriodSeconds | default 30 }}
+
 ---
+# Service for {{ $host }}
 apiVersion: v1
 kind: Service
 metadata:
-  annotations:
-    app.openshift.io/vcs-ref: {{ .vcs.ref }}
-    app.openshift.io/vcs-uri: {{ .vcs.uri }}
-  labels:
-    app: {{ .host }}
-    app.kubernetes.io/component: {{ .host }}
-    app.kubernetes.io/instance: {{ .host }}
-    app.kubernetes.io/name: {{ .host }}
-    app.kubernetes.io/part-of: {{ $partOf }}
-    app.openshift.io/runtime: {{ .runtime | default "nodejs" }}
-  name: {{ .host }}
+  name: {{ $host }}
   namespace: {{ $namespace }}
+  labels:
+    app: {{ $host }}
+    app.kubernetes.io/component: {{ $host }}
+    app.kubernetes.io/instance: {{ $host }}
+    app.kubernetes.io/name: {{ $host }}
+    app.kubernetes.io/part-of: {{ $partOf }}
+    {{- if .runtime }}
+    app.openshift.io/runtime: {{ .runtime }}
+    {{- end }}
+  annotations:
+    {{- if .vcs }}
+    app.openshift.io/vcs-ref: {{ .vcs.ref | quote }}
+    app.openshift.io/vcs-uri: {{ .vcs.uri | quote }}
+    {{- end }}
+    {{- if and .service .service.annotations }}
+    {{- toYaml .service.annotations | nindent 4 }}
+    {{- end }}
 spec:
-  internalTrafficPolicy: Cluster
+  type: {{ if .service }}{{ .service.type | default "ClusterIP" }}{{ else }}ClusterIP{{ end }}
+  {{- if and .service .service.sessionAffinity }}
+  sessionAffinity: {{ .service.sessionAffinity }}
+  {{- if .service.sessionAffinityConfig }}
+  sessionAffinityConfig:
+    {{- toYaml .service.sessionAffinityConfig | nindent 4 }}
+  {{- end }}
+  {{- else }}
+  sessionAffinity: None
+  {{- end }}
+  internalTrafficPolicy: {{ if and .service .service.internalTrafficPolicy }}{{ .service.internalTrafficPolicy }}{{ else }}Cluster{{ end }}
   ipFamilies:
     - IPv4
   ipFamilyPolicy: SingleStack
@@ -110,41 +242,64 @@ spec:
       port: {{ .port }}
       protocol: TCP
       targetPort: {{ .port }}
+      {{- if and .service (or (eq (default "ClusterIP" .service.type) "NodePort") (eq (default "ClusterIP" .service.type) "LoadBalancer")) .service.nodePort }}
+      nodePort: {{ .service.nodePort }}
+      {{- end }}
   selector:
-    app: {{ .host }}
-    deployment: {{ .host }}
-  sessionAffinity: None
-  type: ClusterIP
+    app: {{ $host }}
+    deployment: {{ $host }}
+
 ---
+# Route for {{ $host }} (OpenShift)
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  labels:
-    app: {{ .host }}
-    app.kubernetes.io/component: {{ .host }}
-    app.kubernetes.io/instance: {{ .host }}
-    app.kubernetes.io/name: {{ .host }}
-    app.kubernetes.io/part-of: {{ $partOf }}
-    app.openshift.io/runtime: {{ .runtime | default "nodejs" }}
-  name: {{ .host }}
+  name: {{ $host }}
   namespace: {{ $namespace }}
+  labels:
+    app: {{ $host }}
+    app.kubernetes.io/component: {{ $host }}
+    app.kubernetes.io/instance: {{ $host }}
+    app.kubernetes.io/name: {{ $host }}
+    app.kubernetes.io/part-of: {{ $partOf }}
+    {{- if .runtime }}
+    app.openshift.io/runtime: {{ .runtime }}
+    {{- end }}
+  {{- if and .route .route.annotations }}
+  annotations:
+    {{- toYaml .route.annotations | nindent 4 }}
+  {{- end }}
 spec:
+  {{- if and .route .route.host }}
+  host: {{ .route.host }}
+  {{- end }}
+  {{- if and .route .route.path }}
+  path: {{ .route.path }}
+  {{- end }}
   port:
     targetPort: {{ .port }}-tcp
+  {{- if and .route .route.tls }}
+  tls:
+    {{- toYaml .route.tls | nindent 4 }}
+  {{- else }}
   tls:
     insecureEdgeTerminationPolicy: Redirect
     termination: edge
+  {{- end }}
   to:
     kind: Service
-    name: {{ .host }}
-    weight: 100
-  wildcardPolicy: None
+    name: {{ $host }}
+    weight: {{ if and .route .route.weight }}{{ .route.weight }}{{ else }}100{{ end }}
+  {{- if and .route .route.alternateBackends }}
+  alternateBackends:
+    {{- toYaml .route.alternateBackends | nindent 4 }}
+  {{- end }}
+  wildcardPolicy: {{ if and .route .route.wildcardPolicy }}{{ .route.wildcardPolicy }}{{ else }}None{{ end }}
+
 {{- if .rbac }}
-{{- $clusterWide := .rbac.clusterWide }}
-{{- $host := .host }}
+{{- $clusterWide := .rbac.clusterWide | default false }}
 ---
-{{- with .rbac.rules }}
-# If clusterWide is true, create a ClusterRole and ClusterRoleBinding
+# RBAC Role for {{ $host }}
 apiVersion: rbac.authorization.k8s.io/v1
 {{- if $clusterWide }}
 kind: ClusterRole
@@ -156,62 +311,79 @@ metadata:
   {{- if not $clusterWide }}
   namespace: {{ $namespace }}
   {{- end }}
-rules:
-  {{- range . }}
-    - apiGroups: 
-        {{- if eq (len .apiGroups) 1 }}
-        {{- if eq (index .apiGroups 0) "" }}
-        - ""
-        {{- else }}
-        {{- range .apiGroups }}
-        - {{ . }}
-        {{- end }}
-        {{- end }}
-        {{- else }}
-        {{- range .apiGroups }}
-        - {{ . }}
-        {{- end }}
-        {{- end }}
-      resources: 
-        {{- range .resources }}
-        - {{ . }}
-        {{- end }}
-      verbs: 
-        {{- range .verbs }}
-        - {{ . }}
-        {{- end }}
+  labels:
+    app: {{ $host }}
+    {{- if .rbac.labels }}
+    {{- toYaml .rbac.labels | nindent 4 }}
     {{- end }}
+  {{- if .rbac.annotations }}
+  annotations:
+    {{- toYaml .rbac.annotations | nindent 4 }}
   {{- end }}
+rules:
+{{- range .rbac.rules }}
+  - apiGroups:
+    {{- if .apiGroups }}
+    {{- range .apiGroups }}
+    {{- if eq . "" }}
+    - ""
+    {{- else }}
+    - {{ . }}
+    {{- end }}
+    {{- end }}
+    {{- else }}
+    - ""
+    {{- end }}
+    resources:
+    {{- range .resources }}
+    - {{ . }}
+    {{- end }}
+    verbs:
+    {{- range .verbs }}
+    - {{ . }}
+    {{- end }}
+    {{- if .resourceNames }}
+    resourceNames:
+    {{- range .resourceNames }}
+    - {{ . }}
+    {{- end }}
+    {{- end }}
+{{- end }}
+
 ---
-{{- if $clusterWide }}
+# RBAC RoleBinding for {{ $host }}
 apiVersion: rbac.authorization.k8s.io/v1
+{{- if $clusterWide }}
 kind: ClusterRoleBinding
+{{- else }}
+kind: RoleBinding
+{{- end }}
 metadata:
-  name: {{ $host }}-clusterrolebinding
+  name: {{ $host }}-{{ if $clusterWide }}clusterrolebinding{{ else }}rolebinding{{ end }}
+  {{- if not $clusterWide }}
   namespace: {{ $namespace }}
+  {{- end }}
+  labels:
+    app: {{ $host }}
+    {{- if .rbac.labels }}
+    {{- toYaml .rbac.labels | nindent 4 }}
+    {{- end }}
+  {{- if .rbac.annotations }}
+  annotations:
+    {{- toYaml .rbac.annotations | nindent 4 }}
+  {{- end }}
 roleRef:
-  apiVersion: rbac.authorization.k8s.io/v1
+  {{- if $clusterWide }}
   kind: ClusterRole
   name: {{ $host }}-clusterrole
-subjects:
-  - kind: ServiceAccount
-    name: {{ $host }}
-    namespace: {{ $namespace }}
-{{- else }}
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: {{ $host }}-rolebinding
-  namespace: {{ $namespace }}
-roleRef:
-  apiVersion: rbac.authorization.k8s.io/v1
+  {{- else }}
   kind: Role
   name: {{ $host }}-role
+  {{- end }}
 subjects:
   - kind: ServiceAccount
     name: {{ $host }}
     namespace: {{ $namespace }}
 {{- end }}
-{{- end }}
+
 {{- end }}

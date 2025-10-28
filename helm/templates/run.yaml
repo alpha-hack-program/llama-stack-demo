@@ -131,10 +131,18 @@ data:
       db_path: {{ .Values.lsdBaseDir }}/.llama/distributions/rh/inference_store.db
     models:
     {{- range .Values.models }}
+    {{- if .embeddingsModel }}
+    - metadata:
+        embedding_dimension: {{ .vectorDimension }}
+      model_id: {{ .name | replace " " "-" | lower }}
+      provider_id: {{ .name | replace " " "-" | lower }}
+      model_type: embedding
+    {{- else }}
     - metadata: {}
       model_id: {{ .name | replace " " "-" | lower }}
       provider_id: {{ .name | replace " " "-" | lower }}
       model_type: llm
+    {{- end }}
     {{- end }}
     - metadata:
         embedding_dimension: 768
