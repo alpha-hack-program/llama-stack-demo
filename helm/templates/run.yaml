@@ -11,13 +11,14 @@ data:
     apis:
     - agents
     - datasetio
-    - eval
+    # - eval
     - inference
     - safety
     - scoring
     - telemetry
     - tool_runtime
     - vector_io
+    - files
     providers:
       inference:
       {{- range .Values.models }}
@@ -51,6 +52,7 @@ data:
       safety:
         - provider_id: trustyai_fms
           provider_type: remote::trustyai_fms
+          module: llama_stack_provider_trustyai_fms==0.2.2
           config:
             orchestrator_url: ${env.FMS_ORCHESTRATOR_URL:=}
             ssl_cert_path: ${env.FMS_SSL_CERT_PATH:=}
@@ -66,12 +68,12 @@ data:
           responses_store:
             type: sqlite
             db_path: {{ .Values.lsdBaseDir }}/.llama/distributions/rh/responses_store.db
-      eval:
-      - provider_id: trustyai_lmeval
-        provider_type: remote::trustyai_lmeval
-        config:
-            use_k8s: True
-            base_url: ${env.VLLM_URL:http://localhost:8000/v1}
+      # eval:
+      # - provider_id: trustyai_lmeval
+      #   provider_type: remote::trustyai_lmeval
+      #   config:
+      #       use_k8s: True
+      #       base_url: ${env.VLLM_URL:http://localhost:8000/v1}
       datasetio:
       - provider_id: huggingface
         provider_type: remote::huggingface
@@ -123,6 +125,14 @@ data:
       - provider_id: model-context-protocol
         provider_type: remote::model-context-protocol
         config: {}
+      files:
+      - provider_id: meta-reference-files
+        provider_type: inline::localfs
+        config:
+          storage_dir: {{ .Values.lsdBaseDir }}/.llama/distributions/rh/files
+          metadata_store:
+            type: sqlite
+            db_path: {{ .Values.lsdBaseDir }}/.llama/distributions/rh/files_metadata.db
     metadata_store:
       type: sqlite
       db_path: {{ .Values.lsdBaseDir }}/.llama/distributions/rh/registry.db
@@ -169,5 +179,5 @@ data:
     
     server:
       port: 8321
-    external_providers_dir: {{ .Values.lsdBaseDir }}/.llama/providers.d
+    # external_providers_dir: {{ .Values.lsdBaseDir }}/.llama/providers.d
 
