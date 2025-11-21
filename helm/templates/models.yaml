@@ -7,6 +7,7 @@ kind: InferenceService
 metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "1"
+    opendatahub.io/model-type: generative
     openshift.io/display-name: "{{ .displayName }}"
     security.opendatahub.io/enable-auth: '{{ default false .enableAuth }}'
     {{- if default true .rawDeployment }}
@@ -20,7 +21,9 @@ metadata:
   name: {{ .name }}
   namespace: {{ $.Values.namespace }}
   labels:
+    networking.kserve.io/visibility: exposed
     opendatahub.io/dashboard: 'true'
+    opendatahub.io/genai-asset: 'true'
     app.kubernetes.io/part-of: {{ $.Values.partOf }}
     {{- if .additionalLabels }}
     {{- range $key, $value := .additionalLabels }}
@@ -118,6 +121,7 @@ kind: ServingRuntime
 metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "1"
+    opendatahub.io/runtime-version: {{ .runtime.version }}
     opendatahub.io/accelerator-name: migrated-gpu
     opendatahub.io/apiProtocol: {{ default "REST" .apiProtocol }}
     {{- if and .runtime .runtime.templateDisplayName }}
@@ -137,6 +141,7 @@ metadata:
     opendatahub.io/dashboard: 'true'
 spec:
   annotations:
+    opendatahub.io/kserve-runtime: vllm
     prometheus.io/path: /metrics
     prometheus.io/port: '8080'
   containers:

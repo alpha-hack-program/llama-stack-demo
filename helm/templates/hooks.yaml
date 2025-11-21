@@ -33,7 +33,7 @@ metadata:
     app.kubernetes.io/component: loader
   annotations:
     "helm.sh/hook": post-install,post-upgrade
-    "helm.sh/hook-weight": "1"
+    "helm.sh/hook-weight": "2"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   template:
@@ -124,7 +124,7 @@ metadata:
   annotations:
     # Helm post-install hook
     "helm.sh/hook": post-install,post-upgrade
-    "helm.sh/hook-weight": "2"
+    "helm.sh/hook-weight": "3"
     "helm.sh/hook-delete-policy": hook-succeeded,hook-failed
 spec:
   template:
@@ -277,4 +277,209 @@ subjects:
 roleRef:
   kind: Role
   name: deployment-labeler
+  apiGroup: rbac.authorization.k8s.io
+---
+# Job to patch MCP servers ConfigMap URLs
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Values.app }}-configmap-patcher-{{ randAlphaNum 5 | lower }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Values.app }}
+    app.kubernetes.io/name: {{ include "rag-lsd.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: {{ .Values.partOf }}
+    app.kubernetes.io/component: configmap-patcher
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "1"
+    "helm.sh/hook-delete-policy": hook-succeeded,hook-failed
+spec:
+  template:
+    metadata:
+      name: {{ .Values.app }}-configmap-patcher-{{ randAlphaNum 5 | lower }}
+    spec:
+      serviceAccountName: configmap-patcher
+      restartPolicy: Never
+      containers:
+      - name: oc-client
+        image: quay.io/openshift/origin-cli:latest
+        command: ["/bin/bash"]
+        args:
+        - -c
+        - |
+          set -e
+          
+          echo "=== ConfigMap URL Patcher ==="
+          echo "Target ConfigMap: $CONFIGMAP_NAME"
+          echo "Target Namespace: $TARGET_NAMESPACE"
+          echo "Source Namespace: $SOURCE_NAMESPACE"
+          
+          # Get the OpenShift apps domain dynamically
+          echo "Getting OpenShift apps domain..."
+          APPS_DOMAIN=$(oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')
+          
+          if [ -z "$APPS_DOMAIN" ]; then
+            echo "❌ ERROR: Failed to get OpenShift apps domain"
+            exit 1
+          fi
+          
+          echo "✓ Apps domain: $APPS_DOMAIN"
+          
+          # Check if the ConfigMap exists
+          echo "Checking if ConfigMap exists..."
+          if ! oc get configmap "$CONFIGMAP_NAME" -n "$TARGET_NAMESPACE" &> /dev/null; then
+            echo "❌ ERROR: ConfigMap $CONFIGMAP_NAME not found in namespace $TARGET_NAMESPACE"
+            exit 1
+          fi
+          
+          echo "✓ Found ConfigMap: $CONFIGMAP_NAME"
+          
+          # Get the current ConfigMap data as YAML
+          echo "Fetching ConfigMap data..."
+          TEMP_FILE="/tmp/configmap-data.yaml"
+          oc get configmap "$CONFIGMAP_NAME" -n "$TARGET_NAMESPACE" -o yaml > "$TEMP_FILE"
+          
+          echo "Original ConfigMap data section:"
+          grep -A 100 "^data:" "$TEMP_FILE" | head -20
+          
+          # Create a patched version using sed
+          echo ""
+          echo "Patching URLs in ConfigMap..."
+          # Pattern: http://<host>.<namespace>:8000 -> https://<host>-<namespace>.<apps_domain>
+          
+          # Create the patched file
+          PATCHED_FILE="/tmp/configmap-patched.yaml"
+          sed -E "s|http://([^.]+)\\.${SOURCE_NAMESPACE}:8000|https://\\1-${SOURCE_NAMESPACE}.${APPS_DOMAIN}|g" "$TEMP_FILE" > "$PATCHED_FILE"
+          
+          echo "Patched ConfigMap data section:"
+          grep -A 100 "^data:" "$PATCHED_FILE" | head -20
+          
+          # Apply the patched ConfigMap
+          echo ""
+          echo "Applying patched ConfigMap..."
+          oc apply -f "$PATCHED_FILE" -n "$TARGET_NAMESPACE"
+          
+          echo "✓ Successfully patched ConfigMap $CONFIGMAP_NAME"
+          
+          # Display the patched ConfigMap for verification
+          echo ""
+          echo "=== Final ConfigMap Data ==="
+          oc get configmap "$CONFIGMAP_NAME" -n "$TARGET_NAMESPACE" -o yaml | grep -A 100 "^data:" | head -20
+          
+        env:
+        - name: CONFIGMAP_NAME
+          value: "gen-ai-aa-mcp-servers"
+        - name: TARGET_NAMESPACE
+          value: "redhat-ods-applications"
+        - name: SOURCE_NAMESPACE
+          value: {{ .Values.namespace | quote }}
+---
+# ServiceAccount for ConfigMap patcher
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: configmap-patcher
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Values.app }}
+    app.kubernetes.io/name: {{ include "rag-lsd.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: {{ .Values.partOf }}
+    app.kubernetes.io/component: configmap-patcher
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+---
+# Role in redhat-ods-applications namespace for ConfigMap access
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: configmap-patcher-{{ .Values.namespace }}
+  namespace: redhat-ods-applications
+  labels:
+    app: {{ .Values.app }}
+    app.kubernetes.io/name: {{ include "rag-lsd.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: {{ .Values.partOf }}
+    app.kubernetes.io/component: configmap-patcher
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  resourceNames: ["gen-ai-aa-mcp-servers"]
+  verbs: ["get", "patch", "update"]
+---
+# RoleBinding in redhat-ods-applications namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: configmap-patcher-{{ .Values.namespace }}
+  namespace: redhat-ods-applications
+  labels:
+    app: {{ .Values.app }}
+    app.kubernetes.io/name: {{ include "rag-lsd.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: {{ .Values.partOf }}
+    app.kubernetes.io/component: configmap-patcher
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+subjects:
+- kind: ServiceAccount
+  name: configmap-patcher
+  namespace: {{ .Values.namespace }}
+roleRef:
+  kind: Role
+  name: configmap-patcher-{{ .Values.namespace }}
+  apiGroup: rbac.authorization.k8s.io
+---
+# ClusterRole to read ingress configuration
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: configmap-patcher-ingress-reader-{{ .Values.namespace }}
+  labels:
+    app: {{ .Values.app }}
+    app.kubernetes.io/name: {{ include "rag-lsd.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: {{ .Values.partOf }}
+    app.kubernetes.io/component: configmap-patcher
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+rules:
+- apiGroups: ["config.openshift.io"]
+  resources: ["ingresses"]
+  verbs: ["get"]
+---
+# ClusterRoleBinding for ingress configuration
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: configmap-patcher-ingress-reader-{{ .Values.namespace }}
+  labels:
+    app: {{ .Values.app }}
+    app.kubernetes.io/name: {{ include "rag-lsd.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: {{ .Values.partOf }}
+    app.kubernetes.io/component: configmap-patcher
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+subjects:
+- kind: ServiceAccount
+  name: configmap-patcher
+  namespace: {{ .Values.namespace }}
+roleRef:
+  kind: ClusterRole
+  name: configmap-patcher-ingress-reader-{{ .Values.namespace }}
   apiGroup: rbac.authorization.k8s.io
