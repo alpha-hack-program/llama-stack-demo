@@ -33,6 +33,7 @@ RUN echo "Using Python 🐍 from: $(which python)" && \
 
 # Copy the full application code
 COPY run.py .
+COPY rag_loader.py .
 
 # Now switch to a non-root user for runtime
 USER 1001
