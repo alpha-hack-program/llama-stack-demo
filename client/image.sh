@@ -139,6 +139,7 @@ function run_app() {
   podman run --rm -it --name llama-stack-app \
     -p "${STREAMLIT_PORT}:8501" \
     -p "${HEALTH_PORT}:8081" \
+    -e VECTOR_STORE_NAME="${VECTOR_STORE_NAME:-rag-store}" \
     -e PYTHONUNBUFFERED=1 \
     -e STREAMLIT_LOGGER_LEVEL=info \
     -e LLAMA_STACK_HOST="${LLAMA_STACK_HOST}" \
