@@ -42,6 +42,7 @@ RUN echo "Using Python 🐍 from: $(which python)" && \
 COPY run.py .
 COPY server.py .
 COPY app.py .
+COPY health-server.py .
 COPY files.py .
 COPY utils.py .
 COPY vector_stores.py .
@@ -59,7 +60,7 @@ RUN chmod +x run.sh start-api.sh start-app.sh
 USER 1001
 
 # Expose common ports (can be overridden in deployment)
-EXPOSE 8000 8501
+EXPOSE 8000 8501 8081
 
 # No default CMD - will be specified at deployment time
 # This allows one image to be used for multiple purposes

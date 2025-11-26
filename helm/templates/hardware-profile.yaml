@@ -1,0 +1,38 @@
+---
+apiVersion: infrastructure.opendatahub.io/v1
+kind: HardwareProfile
+metadata:
+  annotations:
+    opendatahub.io/dashboard-feature-visibility: '[]'
+    opendatahub.io/disabled: 'false'
+    opendatahub.io/display-name: nvidia
+  name: nvidia
+  namespace: redhat-ods-applications
+spec:
+  identifiers:
+    - defaultCount: '6'
+      displayName: CPU
+      identifier: cpu
+      maxCount: '8'
+      minCount: '6'
+      resourceType: CPU
+    - defaultCount: 24Gi
+      displayName: Memory
+      identifier: memory
+      maxCount: 28Gi
+      minCount: 24Gi
+      resourceType: Memory
+    - defaultCount: 1
+      displayName: nvidia-gpu
+      identifier: nvidia.com/gpu
+      maxCount: 2
+      minCount: 1
+      resourceType: Accelerator
+  scheduling:
+    node:
+      nodeSelector: {}
+      tolerations:
+        - effect: NoSchedule
+          key: nvidia.com/gpu
+          operator: Exists
+    type: Node

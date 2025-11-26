@@ -14,8 +14,10 @@ metadata:
     serving.kserve.io/deploymentMode: RawDeployment
     {{- else }}
     serving.knative.openshift.io/enablePassthrough: 'true'
-    sidecar.istio.io/inject: 'true'
-    sidecar.istio.io/rewriteAppHTTPProbers: 'true'
+    opendatahub.io/hardware-profile-namespace: redhat-ods-applications
+    opendatahub.io/hardware-profile-name: nvidia
+    opendatahub.io/connections: {{ .name }}
+    opendatahub.io/model-type: generative
     app.openshift.io/connects-to: '[{"apiVersion":"apps/v1","kind":"Deployment","name":"{{ $appName }}"}]'
     {{- end }}
   name: {{ .name }}

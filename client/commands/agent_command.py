@@ -89,38 +89,30 @@ def default_agent(
     else:
         print("\nℹ️  No vector store specified, proceeding without RAG")
 
-    # Use provided tools or default MCP servers
+    # Use provided tools or empty list (no defaults)
     if tools is None:
-        tools = [
-            {
-                "type": "mcp",
-                "server_label": "compatibility-engine-MCP-Server",
-                "server_url": "http://compatibility-engine.llama-stack-demo:8000/sse"
-            },
-            {
-                "type": "mcp",
-                "server_label": "eligibility-engine-MCP-Server",
-                "server_url": "http://eligibility-engine.llama-stack-demo:8000/sse"
-            },
-            {
-                "type": "mcp",
-                "server_label": "finance-engine-MCP-Server",
-                "server_url": "http://finance-engine.llama-stack-demo:8000/sse"
-            },
-        ]
+        tools = []
+        print("\n⚠️  No tools specified")
+        print("   Agent will work without external tool access")
     elif len(tools) == 0:
-        print("\n⚠️  No tools configured (--no-tools flag was used)")
+        print("\n⚠️  No tools configured")
         print("   Agent will work without external tool access")
     
-    # Display MCP server configuration
+    # Display tool configuration
     if len(tools) > 0:
-        print("\n🛠️  Configuring MCP servers (server-side execution)...")
+        print("\n🛠️  Configuring tools (server-side execution)...")
         for tool_config in tools:
-            if tool_config.get("type") == "mcp":
-                server_label = tool_config["server_label"]
-                server_url = tool_config["server_url"]
-                print(f"   - {server_label}: {server_url}")
-        print(f"   ℹ️  Llama Stack will handle MCP tool discovery and execution")
+            tool_type = tool_config.get("type", "unknown")
+            if tool_type == "mcp":
+                server_label = tool_config.get("server_label", "Unknown")
+                server_url = tool_config.get("server_url", "Unknown")
+                print(f"   - MCP Server: {server_label}: {server_url}")
+            elif tool_type in ["websearch", "web_search", "file_search", "rag"]:
+                toolgroup_id = tool_config.get("toolgroup_id", "N/A")
+                print(f"   - Builtin Tool: {tool_type} (toolgroup: {toolgroup_id})")
+            else:
+                print(f"   - Tool: {tool_type}")
+        print(f"   ℹ️  Llama Stack will handle tool discovery and execution")
     
     # Prepare configuration for Llama Stack
     config = {
@@ -254,44 +246,32 @@ async def langchain_agent(
     else:
         print("\nNo vector store name provided, using default tools without vector store search")
     
-    # Use provided tools or default MCP servers
+    # Use provided tools or empty list (no defaults)
     if tools is None:
-        tools = [
-            {
-                "type": "mcp",
-                "server_label": "compatibility-engine-MCP-Server",
-                "server_url": "https://compatibility-engine-llama-stack-demo.apps.ocp.sandbox3322.opentlc.com/sse"
-            },
-            {
-                "type": "mcp",
-                "server_label": "eligibility-engine-MCP-Server",
-                "server_url": "https://eligibility-engine-llama-stack-demo.apps.ocp.sandbox3322.opentlc.com/sse"
-            },
-            {
-                "type": "mcp",
-                "server_label": "finance-engine-MCP-Server",
-                "server_url": "https://finance-engine-llama-stack-demo.apps.ocp.sandbox3322.opentlc.com/sse"
-            },
-        ]
+        tools = []
+        print("\n⚠️  No tools specified")
+        print("   Agent will work without external tool access")
     elif len(tools) == 0:
-        print("\n⚠️  No tools configured (--no-tools flag was used)")
+        print("\n⚠️  No tools configured")
         print("   Agent will work without external tool access")
     
     # Build MCP client configuration
+    mcp_config = {}
     if len(tools) > 0:
         print("\n🛠️  Configuring MCP client...")
-        mcp_config = {}
         for tool_config in tools:
             if tool_config.get("type") == "mcp":
-                server_label = tool_config["server_label"]
-                server_url = tool_config["server_url"]
+                server_label = tool_config.get("server_label", "Unknown")
+                server_url = tool_config.get("server_url", "Unknown")
                 mcp_config[server_label] = {
                     "transport": "sse",
                     "url": server_url,
                 }
-                print(f"   - {server_label}: {server_url}")
-    else:
-        mcp_config = {}
+                print(f"   - MCP Server: {server_label}: {server_url}")
+            elif tool_config.get("type") == "toolgroup":
+                print(f"   ⚠️  Warning: Tool groups are not supported in LangChain agent mode")
+                print(f"      Tool group '{tool_config.get('toolgroup_id')}' will be ignored")
+                print(f"      Please use 'default' agent type for tool group support")
     
     # Create MCP client and get tools with error handling
     print("\n📦 Loading MCP tools...")
@@ -469,44 +449,32 @@ async def langgraph_agent(
     else:
         print("\nℹ️  No vector store specified, proceeding without RAG")
     
-    # Use provided tools or default MCP servers
+    # Use provided tools or empty list (no defaults)
     if tools is None:
-        tools = [
-            {
-                "type": "mcp",
-                "server_label": "compatibility-engine-MCP-Server",
-                "server_url": "https://compatibility-engine-llama-stack-demo.apps.ocp.sandbox3322.opentlc.com/sse"
-            },
-            {
-                "type": "mcp",
-                "server_label": "eligibility-engine-MCP-Server",
-                "server_url": "https://eligibility-engine-llama-stack-demo.apps.ocp.sandbox3322.opentlc.com/sse"
-            },
-            {
-                "type": "mcp",
-                "server_label": "finance-engine-MCP-Server",
-                "server_url": "https://finance-engine-llama-stack-demo.apps.ocp.sandbox3322.opentlc.com/sse"
-            },
-        ]
+        tools = []
+        print("\n⚠️  No tools specified")
+        print("   Agent will work without external tool access")
     elif len(tools) == 0:
-        print("\n⚠️  No tools configured (--no-tools flag was used)")
+        print("\n⚠️  No tools configured")
         print("   Agent will work without external tool access")
     
     # Build MCP client configuration
+    mcp_config = {}
     if len(tools) > 0:
         print("\n🛠️  Configuring MCP client...")
-        mcp_config = {}
         for tool_config in tools:
             if tool_config.get("type") == "mcp":
-                server_label = tool_config["server_label"]
-                server_url = tool_config["server_url"]
+                server_label = tool_config.get("server_label", "Unknown")
+                server_url = tool_config.get("server_url", "Unknown")
                 mcp_config[server_label] = {
                     "transport": "sse",
                     "url": server_url,
                 }
-                print(f"   - {server_label}: {server_url}")
-    else:
-        mcp_config = {}
+                print(f"   - MCP Server: {server_label}: {server_url}")
+            elif tool_config.get("type") == "toolgroup":
+                print(f"   ⚠️  Warning: Tool groups are not supported in LangGraph agent mode")
+                print(f"      Tool group '{tool_config.get('toolgroup_id')}' will be ignored")
+                print(f"      Please use 'default' agent type for tool group support")
     
     # Create MCP client and get tools with error handling
     print("\n📦 Loading MCP tools...")

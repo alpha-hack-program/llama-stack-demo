@@ -8,13 +8,139 @@ Provides a chat interface with:
 """
 
 import os
+import sys
+
+# Write directly to stderr FIRST to test if this works
+print("=" * 80, file=sys.stderr, flush=True)
+print("🚀 APP.PY LOADING - DIRECT PRINT TO STDERR", file=sys.stderr, flush=True)
+print("=" * 80, file=sys.stderr, flush=True)
+
 import streamlit as st
 from typing import List, Dict, Any, Optional
+import threading
+from flask import Flask, jsonify
+import logging
+
+# Configure logging to output to stdout and a file for debugging
+log_file = '/tmp/health-server.log'
+print(f"📝 Setting up logging to: {log_file}", file=sys.stderr, flush=True)
+
+try:
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler(log_file, mode='w')  # 'w' to overwrite on each run
+        ],
+        force=True  # Force reconfiguration
+    )
+    logger = logging.getLogger(__name__)
+    print("✅ Logging configured successfully", file=sys.stderr, flush=True)
+except Exception as e:
+    print(f"❌ Logging configuration failed: {e}", file=sys.stderr, flush=True)
+    logger = None
 
 from llama_stack_client.types.model import Model
 
 from utils import create_client, list_models
 from commands.agent_command import agent_command
+
+# Force immediate output
+sys.stdout.flush()
+sys.stderr.flush()
+
+logger.info(f"📝 Logging to: {log_file}")
+logger.info("=" * 80)
+logger.info("🚀 APP.PY MODULE LOADING...")
+logger.info("=" * 80)
+
+
+# Health check server (runs on a separate port)
+logger.info("🏥 Creating Flask health app...")
+health_app = Flask(__name__)
+health_status = {"status": "healthy", "checks": {}}
+
+
+@health_app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint for Kubernetes/OpenShift probes."""
+    logger.info("🏥 Health check endpoint called")
+    return jsonify(health_status), 200
+
+
+@health_app.route('/ready', methods=['GET'])
+def readiness_check():
+    """Readiness check endpoint - verifies the app can handle requests."""
+    logger.info("🔍 Readiness check endpoint called")
+    try:
+        # Check if we can create a client connection
+        client = get_llama_client()
+        health_status["checks"]["llama_stack"] = "connected"
+        logger.info("✅ Readiness check: Llama Stack connected")
+        return jsonify({"status": "ready", "checks": health_status["checks"]}), 200
+    except Exception as e:
+        health_status["checks"]["llama_stack"] = f"error: {str(e)}"
+        logger.error(f"❌ Readiness check failed: {str(e)}")
+        return jsonify({"status": "not_ready", "error": str(e), "checks": health_status["checks"]}), 503
+
+
+# Log registered routes after they are defined
+logger.info("🏥 Flask health app initialized")
+logger.info(f"   Registered routes:")
+for rule in health_app.url_map.iter_rules():
+    logger.info(f"     - {rule.rule} [{', '.join(rule.methods - {'OPTIONS', 'HEAD'})}]")
+
+
+def start_health_server():
+    """Start the health check server on a separate thread."""
+    health_port = int(os.environ.get("HEALTH_PORT", "8081"))
+    logger.info(f"🚀 Attempting to start health server on port {health_port}...")
+    try:
+        logger.info(f"📡 Flask app starting on 0.0.0.0:{health_port}")
+        sys.stdout.flush()
+        sys.stderr.flush()
+        health_app.run(host='0.0.0.0', port=health_port, debug=False, use_reloader=False)
+        logger.info(f"✅ Health server started successfully on port {health_port}")
+    except OSError as e:
+        if "Address already in use" in str(e):
+            logger.warning(f"⚠️  Health server port {health_port} already in use (likely from Streamlit reload), skipping...")
+        else:
+            logger.error(f"❌ Health server OSError: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+    except Exception as e:
+        logger.error(f"❌ Health server error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+
+
+# Global flag to ensure health server only starts once
+_health_server_started = False
+
+# Start health check server in background thread
+# Note: This runs at module load time
+logger.info("=" * 80)
+logger.info("🔧 Initializing health check server...")
+
+if not _health_server_started:
+    logger.info("   ✅ Starting health server thread...")
+    health_thread = threading.Thread(target=start_health_server, daemon=True)
+    health_thread.start()
+    _health_server_started = True
+    logger.info(f"   ✅ Health check thread started (daemon: {health_thread.daemon}, alive: {health_thread.is_alive()})")
+    logger.info(f"   ✅ Health server starting on port {os.environ.get('HEALTH_PORT', '8081')}")
+    # Give the server a moment to start
+    import time
+    time.sleep(0.5)
+    logger.info(f"   ✅ Thread status after sleep: alive={health_thread.is_alive()}")
+else:
+    logger.info("   ℹ️  Health server already started, skipping")
+    
+logger.info("=" * 80)
+
+sys.stdout.flush()
+sys.stderr.flush()
 
 
 # Page configuration
@@ -98,7 +224,8 @@ def fetch_tool_groups() -> List[Dict[str, Any]]:
                     {
                         "name": t.name if hasattr(t, 'name') else 'Unknown',
                         "description": t.description if hasattr(t, 'description') else None,
-                        "type": t.type if hasattr(t, 'type') else None
+                        "type": t.type if hasattr(t, 'type') else None,
+                        "tool_data": t  # Store the full tool object for later use
                     }
                     for t in list(tools_response)
                 ] if tools_response else []
@@ -117,25 +244,74 @@ def fetch_tool_groups() -> List[Dict[str, Any]]:
         return []
 
 
-def get_default_mcp_servers() -> List[Dict[str, Any]]:
-    """Get default MCP server configuration."""
-    return [
-        {
-            "type": "mcp",
-            "server_label": "compatibility-engine-MCP-Server",
-            "server_url": "https://compatibility-engine-llama-stack-demo.apps.ocp.sandbox3322.opentlc.com/sse"
-        },
-        {
-            "type": "mcp",
-            "server_label": "eligibility-engine-MCP-Server",
-            "server_url": "https://eligibility-engine-llama-stack-demo.apps.ocp.sandbox3322.opentlc.com/sse"
-        },
-        {
-            "type": "mcp",
-            "server_label": "finance-engine-MCP-Server",
-            "server_url": "https://finance-engine-llama-stack-demo.apps.ocp.sandbox3322.opentlc.com/sse"
-        },
-    ]
+def get_tools_from_toolgroups(toolgroup_ids: List[str]) -> List[Dict[str, Any]]:
+    """
+    Get tool configurations from selected toolgroups.
+    
+    For MCP toolgroups (those with format mcp::*), we need to provide the MCP server config.
+    For builtin toolgroups (like builtin::websearch), we reference them by toolgroup_id.
+    
+    Args:
+        toolgroup_ids: List of toolgroup identifiers
+        
+    Returns:
+        List of tool configurations ready for Llama Stack API
+    """
+    try:
+        client = get_llama_client()
+        tools = []
+        
+        # Get all toolgroups
+        all_toolgroups = list(client.toolgroups.list())
+        toolgroup_map = {tg.identifier: tg for tg in all_toolgroups if hasattr(tg, 'identifier')}
+        
+        for group_id in toolgroup_ids:
+            # Check if this is an MCP toolgroup
+            if group_id.startswith('mcp::'):
+                # For MCP toolgroups, we need to provide MCP server configuration
+                toolgroup = toolgroup_map.get(group_id)
+                if toolgroup:
+                    # Try to extract MCP endpoint information
+                    mcp_endpoint = getattr(toolgroup, 'mcp_endpoint', None)
+                    provider_id = getattr(toolgroup, 'provider_id', None)
+                    
+                    if mcp_endpoint:
+                        # Get URI from mcp_endpoint
+                        uri = getattr(mcp_endpoint, 'uri', None) if hasattr(mcp_endpoint, 'uri') else mcp_endpoint.get('uri') if isinstance(mcp_endpoint, dict) else None
+                        
+                        if uri:
+                            # Extract server name from toolgroup_id (remove 'mcp::' prefix)
+                            server_name = group_id.replace('mcp::', '')
+                            tools.append({
+                                "type": "mcp",
+                                "server_label": f"{server_name}-MCP-Server",
+                                "server_url": uri
+                            })
+                        else:
+                            st.warning(f"Could not extract MCP endpoint URI from toolgroup '{group_id}'")
+                    else:
+                        st.warning(f"Toolgroup '{group_id}' does not have MCP endpoint information")
+                else:
+                    st.warning(f"Toolgroup '{group_id}' not found")
+            
+            elif group_id.startswith('builtin::'):
+                # For builtin toolgroups, use the toolgroup reference directly
+                # These are handled differently by Llama Stack
+                tools.append({
+                    "type": group_id.split('::')[1],  # e.g., "websearch" from "builtin::websearch"
+                    "toolgroup_id": group_id
+                })
+            else:
+                st.warning(f"Unknown toolgroup format: '{group_id}'")
+        
+        return tools
+    except Exception as e:
+        st.error(f"Error fetching tools from toolgroups: {e}")
+        import traceback
+        st.error(traceback.format_exc())
+        return []
+
+
 
 
 def execute_agent_query(
@@ -231,35 +407,48 @@ with st.sidebar:
     # Tools configuration
     st.subheader("Tools")
     
-    use_default_tools = st.checkbox(
-        "Use Default MCP Servers",
-        value=True,
-        help="Use the default configured MCP servers"
-    )
-    
-    if use_default_tools:
-        default_servers = get_default_mcp_servers()
-        st.session_state.selected_tools = default_servers
-        
-        with st.expander("Default MCP Servers", expanded=False):
-            for server in default_servers:
-                st.write(f"**{server['server_label']}**")
-                st.caption(f"URL: {server['server_url']}")
-    else:
-        st.session_state.selected_tools = []
-        st.info("Agent will run without tools")
-    
-    # Show available tool groups
+    # Fetch available tool groups from llama stack
     tool_groups = fetch_tool_groups()
+    
     if tool_groups:
-        with st.expander("Available Tool Groups", expanded=False):
-            for group in tool_groups:
-                st.write(f"**{group['identifier']}**")
-                if group['tools']:
+        st.write("**Available Tool Groups from Llama Stack:**")
+        
+        # Allow selection of tool groups
+        selected_group_ids = []
+        for group in tool_groups:
+            group_selected = st.checkbox(
+                f"{group['identifier']}",
+                value=False,
+                key=f"toolgroup_{group['identifier']}",
+                help=f"Provider: {group['provider']}"
+            )
+            
+            if group_selected:
+                selected_group_ids.append(group['identifier'])
+            
+            # Show tools in this group
+            if group['tools']:
+                with st.expander(f"Tools in {group['identifier']}", expanded=False):
                     for tool in group['tools']:
                         st.caption(f"  • {tool['name']}: {tool['description'] or 'No description'}")
-                else:
-                    st.caption("  (No tools)")
+        
+        # Store selected tool groups and fetch individual tools
+        if selected_group_ids:
+            # Fetch individual tools from selected toolgroups
+            individual_tools = get_tools_from_toolgroups(selected_group_ids)
+            st.session_state.selected_tools = individual_tools
+            
+            if individual_tools:
+                st.success(f"Selected {len(selected_group_ids)} tool group(s) with {len(individual_tools)} tool(s)")
+            else:
+                st.warning(f"Selected {len(selected_group_ids)} tool group(s) but no tools found")
+                st.session_state.selected_tools = []
+        else:
+            st.session_state.selected_tools = []
+            st.info("No tools selected. Agent will run without tools.")
+    else:
+        st.warning("No tool groups available in Llama Stack")
+        st.session_state.selected_tools = []
     
     st.divider()
     

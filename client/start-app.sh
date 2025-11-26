@@ -23,5 +23,15 @@ echo "LlamaStack: ${LLAMA_STACK_HOST}:${LLAMA_STACK_PORT}"
 echo "Chat App: http://localhost:8501"
 echo ""
 
+# Start health server in background
+echo "Starting health server on port ${HEALTH_PORT:-8081}..."
+python health-server.py &
+HEALTH_PID=$!
+echo "Health server started with PID: $HEALTH_PID"
+
+# Give health server a moment to start
+sleep 1
+
+# Start Streamlit (will block here)
 exec streamlit run app.py
 

@@ -27,10 +27,14 @@ spec:
         - name: "{{ .Values.app }}-app"
           image: {{ .Values.llamaStackDemoCoreImage }}
           command: ["./start-app.sh"]
+          imagePullPolicy: Always
           ports:
             - containerPort: 8501
               protocol: TCP
               name: 8501-tcp
+            - containerPort: 8081
+              protocol: TCP
+              name: health
           resources:
             limits:
               cpu: '1'
@@ -38,9 +42,30 @@ spec:
             requests:
               cpu: 250m
               memory: 500Mi
+          env:
+            - name: STREAMLIT_SERVER_FILE_WATCHER_TYPE
+              value: "none"
+            - name: STREAMLIT_SERVER_HEADLESS
+              value: "true"
           envFrom:
             - configMapRef:
                 name: {{ .Values.app }}-config
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
 ---
 apiVersion: v1
 kind: Service

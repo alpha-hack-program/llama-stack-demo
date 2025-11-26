@@ -17,6 +17,7 @@ CACHE_FLAG="${CACHE_FLAG:-$DEFAULT_CACHE_FLAG}"
 REGISTRY="${REGISTRY:-$DEFAULT_REGISTRY}"
 SERVER_PORT="${SERVER_PORT:-8000}"
 STREAMLIT_PORT="${STREAMLIT_PORT:-8501}"
+HEALTH_PORT="${HEALTH_PORT:-8081}"
 
 LOCAL_IMAGE="${COMPONENT_NAME}:${TAG}"
 REMOTE_IMAGE="${REGISTRY}/${COMPONENT_NAME}:${TAG}"
@@ -132,15 +133,42 @@ function run_app() {
 
   echo "🚀 Starting Streamlit Chat App on port ${STREAMLIT_PORT}..."
   echo "💬 App will be available at: http://localhost:${STREAMLIT_PORT}"
+  echo "🏥 Health server will be available at: http://localhost:${HEALTH_PORT}"
+  echo "Image: ${IMAGE_TO_RUN}"
   
   podman run --rm -it --name llama-stack-app \
     -p "${STREAMLIT_PORT}:8501" \
+    -p "${HEALTH_PORT}:8081" \
+    -e PYTHONUNBUFFERED=1 \
+    -e STREAMLIT_LOGGER_LEVEL=info \
     -e LLAMA_STACK_HOST="${LLAMA_STACK_HOST}" \
     -e LLAMA_STACK_PORT="${LLAMA_STACK_PORT}" \
     -e LLAMA_STACK_SECURE="${LLAMA_STACK_SECURE}" \
     -e NO_PROXY="localhost,127.0.0.1,host.containers.internal" \
     "${IMAGE_TO_RUN}" \
     ./start-app.sh
+}
+
+# --- Run Bash ---
+function run_bash() {
+  USE_REMOTE=false
+  if [[ "${1:-}" == "--remote" ]]; then
+    USE_REMOTE=true
+    shift
+  fi
+
+  IMAGE_TO_RUN=$(get_image "$USE_REMOTE")
+
+  echo "🐚 Running bash in container: ${IMAGE_TO_RUN}"
+  podman run --rm -it --name llama-stack-bash \
+    -p "${HEALTH_PORT}:8081" \
+    -e PYTHONUNBUFFERED=1 \
+    -e STREAMLIT_LOGGER_LEVEL=info \
+    -e LLAMA_STACK_HOST="${LLAMA_STACK_HOST}" \
+    -e LLAMA_STACK_PORT="${LLAMA_STACK_PORT}" \
+    -e LLAMA_STACK_SECURE="${LLAMA_STACK_SECURE}" \
+    -e NO_PROXY="localhost,127.0.0.1,host.containers.internal" \
+  "${IMAGE_TO_RUN}" /bin/bash
 }
 
 # --- Helper: Get image (local or remote) ---
@@ -232,6 +260,7 @@ case "${1:-}" in
   cmd|command) shift; run_command "cmd" "$@" ;;
   api|server) shift; run_api "$@" ;;
   app|streamlit) shift; run_app "$@" ;;
+  bash) shift; run_bash "$@" ;;
   all)
     build
     push
