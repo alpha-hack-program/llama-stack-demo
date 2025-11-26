@@ -13,8 +13,17 @@ from typing import List, Dict, Any, Optional, Generator, Tuple, Callable
 from llama_stack_client import LlamaStackClient
 from llama_stack_client.types import ResponseObject, VectorStore, VectorStoreSearchResponse
 from vector_stores import list_vector_stores, search_vector_store
-from utils import create_client, create_langchain_client, get_rag_context, augment_instructions_with_context
+from utils import (
+    create_client, 
+    create_langchain_client, 
+    get_rag_context, 
+    augment_instructions_with_context,
+    discover_tools,
+    list_tool_groups,
+    get_mcp_server_url
+)
 from streaming_logger import StreamingLogHandler
+from agent_events import AgentEventHandler, LangChainAgentCallback
 
 
 def default_agent(
@@ -25,8 +34,9 @@ def default_agent(
     max_results: int = 10,
     score_threshold: float = 0.8,
     ranker: str = "default",
-    tools: Optional[List[Dict[str, Any]]] = None
-) -> str:
+    tools: Optional[List[Dict[str, Any]]] = None,
+    event_handler: Optional[AgentEventHandler] = None
+) -> Tuple[str, Dict[str, Any]]:
     """
     Execute the default agent using LlamaStack with native MCP server support.
     
@@ -47,10 +57,15 @@ def default_agent(
         score_threshold: Minimum score threshold for RAG results (default: 0.8)
         ranker: Ranker to use for RAG scoring (default: "default")
         tools: List of tools/MCP servers to use (optional, defaults to configured servers)
+        event_handler: Optional AgentEventHandler for structured event tracking
     
     Returns:
-        The agent's response text
+        Tuple of (response_text, structured_data_dict)
     """
+    # Create event handler if not provided
+    if event_handler is None:
+        event_handler = AgentEventHandler()
+    
     print("\n" + "=" * 80)
     print("🚀 Executing Default Agent with Llama Stack")
     print("=" * 80)
@@ -90,13 +105,41 @@ def default_agent(
     else:
         print("\nℹ️  No vector store specified, proceeding without RAG")
 
-    # Use provided tools or empty list (no defaults)
+    # Use provided tools or auto-discover from server
     if tools is None:
-        tools = []
-        print("\n⚠️  No tools specified")
-        print("   Agent will work without external tool access")
+        # Auto-discover tool groups from the server
+        print("\n🔍 Auto-discovering available tool groups...")
+        try:
+            tools, skipped = discover_tools(
+                client=client,
+                vector_store_name=vector_store_name,
+                include_web_search=True,
+                include_file_search=True,
+                include_mcp=True
+            )
+            
+            if tools:
+                tool_names = []
+                for t in tools:
+                    if t['type'] == 'mcp':
+                        tool_names.append(f"{t['type']}::{t.get('server_label', 'unknown')}")
+                    elif t['type'] == 'file_search':
+                        tool_names.append(f"{t['type']}::rag")
+                    else:
+                        tool_names.append(t['type'])
+                print(f"   ✅ Configured {len(tools)} tool(s): {tool_names}")
+                
+                if skipped:
+                    for skip_msg in skipped:
+                        print(f"   ⚠️  Skipping {skip_msg}")
+            else:
+                print("   ℹ️  No compatible tool groups found")
+        except Exception as e:
+            tools = []
+            print(f"   ⚠️  Could not fetch tool groups: {e}")
+            print("   Agent will work without external tool access")
     elif len(tools) == 0:
-        print("\n⚠️  No tools configured")
+        print("\n⚠️  No tools configured (--no-tools flag used)")
         print("   Agent will work without external tool access")
     
     # Display tool configuration
@@ -106,13 +149,19 @@ def default_agent(
             tool_type = tool_config.get("type", "unknown")
             if tool_type == "mcp":
                 server_label = tool_config.get("server_label", "Unknown")
-                server_url = tool_config.get("server_url", "Unknown")
-                print(f"   - MCP Server: {server_label}: {server_url}")
-            elif tool_type in ["websearch", "web_search", "file_search", "rag"]:
-                toolgroup_id = tool_config.get("toolgroup_id", "N/A")
-                print(f"   - Builtin Tool: {tool_type} (toolgroup: {toolgroup_id})")
+                server_url = tool_config.get("server_url", "N/A")
+                print(f"   - MCP Server: {server_label} ({server_url})")
+            elif tool_type in ["web_search", "websearch"]:
+                print(f"   - Web Search")
+            elif tool_type == "file_search":
+                vector_store_ids = tool_config.get("vector_store_ids", [])
+                stores_str = ", ".join(vector_store_ids) if vector_store_ids else "N/A"
+                print(f"   - File Search (RAG): {stores_str}")
+            elif tool_type == "function":
+                func_name = tool_config.get("name", tool_config.get("function_name", "Unknown"))
+                print(f"   - Function: {func_name}")
             else:
-                print(f"   - Tool: {tool_type}")
+                print(f"   - Tool ({tool_type}): {tool_config}")
         print(f"   ℹ️  Llama Stack will handle tool discovery and execution")
     
     # Prepare configuration for Llama Stack
@@ -130,7 +179,7 @@ def default_agent(
     
     response: ResponseObject = client.responses.create(**config)
 
-    # Display response details
+    # Display response details and emit structured events
     print("\n📊 Agent Response:")
     print("-" * 80)
     
@@ -146,48 +195,85 @@ def default_agent(
             # Check for tool calls in the turn
             if hasattr(turn, 'tool_calls') and turn.tool_calls:
                 for tool_call in turn.tool_calls:
-                    print(f"\n🔧 Tool Called: {tool_call.tool_name if hasattr(tool_call, 'tool_name') else 'Unknown'}")
-                    if hasattr(tool_call, 'arguments'):
+                    tool_name = tool_call.tool_name if hasattr(tool_call, 'tool_name') else 'Unknown'
+                    tool_args = tool_call.arguments if hasattr(tool_call, 'arguments') else {}
+                    tool_result = tool_call.response if hasattr(tool_call, 'response') else None
+                    
+                    # Emit on_tool_start event
+                    event_handler.on_tool_start(
+                        {"name": tool_name},
+                        str(tool_args)
+                    )
+                    
+                    print(f"\n🔧 Tool Called: {tool_name}")
+                    if tool_args:
                         try:
-                            args_formatted = json.dumps(tool_call.arguments, indent=2)
+                            args_formatted = json.dumps(tool_args, indent=2)
                             print(f"📝 Arguments:\n{args_formatted}")
                         except:
-                            print(f"📝 Arguments: {tool_call.arguments}")
+                            print(f"📝 Arguments: {tool_args}")
                     
-                    # Check for tool response
-                    if hasattr(tool_call, 'response'):
+                    # Emit on_tool_end event
+                    if tool_result:
+                        event_handler.on_tool_end(str(tool_result))
                         try:
-                            response_formatted = json.dumps(tool_call.response, indent=2)
+                            response_formatted = json.dumps(tool_result, indent=2)
                             print(f"🛠️  Result:\n{response_formatted}")
                         except:
-                            print(f"🛠️  Result: {tool_call.response}")
+                            print(f"🛠️  Result: {tool_result}")
             
             # Check for step execution details
             if hasattr(turn, 'steps') and turn.steps:
                 for step in turn.steps:
                     if hasattr(step, 'tool_name'):
-                        print(f"\n🔧 Tool: {step.tool_name}")
-                        if hasattr(step, 'tool_args'):
+                        tool_name = step.tool_name
+                        tool_args = step.tool_args if hasattr(step, 'tool_args') else {}
+                        tool_result = step.tool_response if hasattr(step, 'tool_response') else None
+                        
+                        # Emit on_tool_start event
+                        event_handler.on_tool_start(
+                            {"name": tool_name},
+                            str(tool_args)
+                        )
+                        
+                        print(f"\n🔧 Tool: {tool_name}")
+                        if tool_args:
                             try:
-                                args_formatted = json.dumps(step.tool_args, indent=2)
+                                args_formatted = json.dumps(tool_args, indent=2)
                                 print(f"📝 Arguments:\n{args_formatted}")
                             except:
-                                print(f"📝 Arguments: {step.tool_args}")
-                        if hasattr(step, 'tool_response'):
+                                print(f"📝 Arguments: {tool_args}")
+                        
+                        # Emit on_tool_end event
+                        if tool_result:
+                            event_handler.on_tool_end(str(tool_result))
                             try:
-                                resp_formatted = json.dumps(step.tool_response, indent=2)
+                                resp_formatted = json.dumps(tool_result, indent=2)
                                 print(f"🛠️  Result:\n{resp_formatted}")
                             except:
-                                print(f"🛠️  Result: {step.tool_response}")
+                                print(f"🛠️  Result: {tool_result}")
     
     # Legacy check for direct tool_calls attribute
     elif hasattr(response, 'tool_calls') and response.tool_calls:
         print(f"\n🛠️  Tools Used: {len(response.tool_calls)}")
         for tool_call in response.tool_calls:
-            print(f"\n🔧 Tool: {tool_call}")
             # Try to extract more details if available
+            tool_name = "unknown"
+            tool_args = {}
+            tool_result = None
+            
             if hasattr(tool_call, '__dict__'):
                 tool_dict = tool_call.__dict__
+                tool_name = tool_dict.get('tool_name', 'unknown')
+                tool_args = tool_dict.get('arguments', {})
+                tool_result = tool_dict.get('response', None)
+                
+                # Emit events
+                event_handler.on_tool_start({"name": tool_name}, str(tool_args))
+                if tool_result:
+                    event_handler.on_tool_end(str(tool_result))
+                
+                print(f"\n🔧 Tool: {tool_name}")
                 try:
                     print(f"📋 Details:\n{json.dumps(tool_dict, indent=2, default=str)}")
                 except:
@@ -207,7 +293,12 @@ def default_agent(
     print("✅ Default Agent Execution Complete!")
     print("=" * 80)
     
-    return response.output_text
+    # Return response and structured data (matching LangChain/LangGraph format)
+    return response.output_text, {
+        "events": event_handler.get_events(),
+        "tool_calls": event_handler.get_tool_calls(),
+        "final_response": response.output_text
+    }
 
 
 async def langchain_agent(
@@ -218,8 +309,9 @@ async def langchain_agent(
     vector_store_name: Optional[str] = None,
     max_results: int = 10,
     score_threshold: float = 0.8,
-    ranker: str = "default"
-) -> str:
+    ranker: str = "default",
+    event_handler: Optional[AgentEventHandler] = None
+) -> Tuple[str, Dict[str, Any]]:
     """
     Execute the LangChain agent implementation using LangChain 1.0 with MCP adapters.
     
@@ -241,9 +333,10 @@ async def langchain_agent(
         max_results: Maximum number of RAG results (default: 10)
         score_threshold: Minimum score threshold for RAG results (default: 0.8)
         ranker: Ranker to use for RAG scoring (default: "default")
+        event_handler: Optional AgentEventHandler for structured event tracking
     
     Returns:
-        The agent's response text
+        Tuple of (response_text, structured_data_dict)
     """
     try:
         from langchain.agents import create_agent
@@ -309,13 +402,33 @@ async def langchain_agent(
     else:
         print("\nNo vector store name provided, using default tools without vector store search")
     
-    # Use provided tools or empty list (no defaults)
+    # Use provided tools or auto-discover from server
     if tools is None:
-        tools = []
-        print("\n⚠️  No tools specified")
-        print("   Agent will work without external tool access")
+        # Auto-discover tool groups from the server (only MCP servers for LangChain)
+        print("\n🔍 Auto-discovering available MCP servers...")
+        try:
+            client = create_client(host=host, port=port, secure=secure)
+            tools, skipped = discover_tools(
+                client=client,
+                vector_store_name=None,  # LangChain doesn't use file_search
+                include_web_search=False,  # LangChain doesn't use web_search
+                include_file_search=False,  # LangChain doesn't use file_search
+                include_mcp=True  # Only MCP servers
+            )
+            
+            if tools:
+                print(f"   ✅ Found {len(tools)} MCP server(s): {[t['server_label'] for t in tools]}")
+                if skipped:
+                    for skip_msg in skipped:
+                        print(f"   ⚠️  Skipping {skip_msg}")
+            else:
+                print("   ℹ️  No MCP servers found")
+        except Exception as e:
+            tools = []
+            print(f"   ⚠️  Could not fetch tool groups: {e}")
+            print("   Agent will work without external tool access")
     elif len(tools) == 0:
-        print("\n⚠️  No tools configured")
+        print("\n⚠️  No tools configured (--no-tools flag used)")
         print("   Agent will work without external tool access")
     
     # Build MCP client configuration
@@ -379,6 +492,10 @@ async def langchain_agent(
     else:
         print("   ℹ️  No MCP servers configured, continuing without tools")
     
+    # Create event handler if not provided
+    if event_handler is None:
+        event_handler = LangChainAgentCallback()
+    
     # Create LangChain agent using create_agent API
     print("\n🤖 Creating LangChain agent...")
     
@@ -403,9 +520,11 @@ async def langchain_agent(
     print("🔄 Executing Agent...")
     print("=" * 80 + "\n")
     
-    result = await agent.ainvoke({
-        "messages": [{"role": "user", "content": input_text}]
-    })
+    # Execute with callbacks to capture structured events
+    result = await agent.ainvoke(
+        {"messages": [{"role": "user", "content": input_text}]},
+        config={"callbacks": [event_handler]}
+    )
     
     # Display execution trace
     print("\n📊 Agent Execution Trace:")
@@ -449,7 +568,12 @@ async def langchain_agent(
     print("✅ LangChain Agent Execution Complete!")
     print("=" * 80)
     
-    return final_response
+    # Return response and structured data
+    return final_response, {
+        "events": event_handler.get_events(),
+        "tool_calls": event_handler.get_tool_calls(),
+        "final_response": final_response
+    }
 
 async def langgraph_agent(
     input_text: str,
@@ -459,8 +583,10 @@ async def langgraph_agent(
     vector_store_name: Optional[str] = None,
     max_results: int = 10,
     score_threshold: float = 0.8,
-    ranker: str = "default"
-) -> str:
+    ranker: str = "default",
+    event_handler: Optional[AgentEventHandler] = None,
+    use_streaming: bool = True
+) -> Tuple[str, Dict[str, Any]]:
     """
     Execute the LangGraph agent implementation using LangChain with Llama Stack.
     
@@ -482,9 +608,11 @@ async def langgraph_agent(
         max_results: Maximum number of RAG results (default: 10)
         score_threshold: Minimum score threshold for RAG results (default: 0.8)
         ranker: Ranker to use for RAG scoring (default: "default")
+        event_handler: Optional AgentEventHandler for structured event tracking
+        use_streaming: Whether to use astream_events for real-time event capture (default: True)
     
     Returns:
-        The agent's response text
+        Tuple of (response_text, structured_data_dict)
     """
     try:
         from langchain.agents import create_agent
@@ -550,13 +678,33 @@ async def langgraph_agent(
     else:
         print("\nℹ️  No vector store specified, proceeding without RAG")
     
-    # Use provided tools or empty list (no defaults)
+    # Use provided tools or auto-discover from server
     if tools is None:
-        tools = []
-        print("\n⚠️  No tools specified")
-        print("   Agent will work without external tool access")
+        # Auto-discover tool groups from the server (only MCP servers for LangGraph)
+        print("\n🔍 Auto-discovering available MCP servers...")
+        try:
+            client = create_client(host=host, port=port, secure=secure)
+            tools, skipped = discover_tools(
+                client=client,
+                vector_store_name=None,  # LangGraph doesn't use file_search
+                include_web_search=False,  # LangGraph doesn't use web_search
+                include_file_search=False,  # LangGraph doesn't use file_search
+                include_mcp=True  # Only MCP servers
+            )
+            
+            if tools:
+                print(f"   ✅ Found {len(tools)} MCP server(s): {[t['server_label'] for t in tools]}")
+                if skipped:
+                    for skip_msg in skipped:
+                        print(f"   ⚠️  Skipping {skip_msg}")
+            else:
+                print("   ℹ️  No MCP servers found")
+        except Exception as e:
+            tools = []
+            print(f"   ⚠️  Could not fetch tool groups: {e}")
+            print("   Agent will work without external tool access")
     elif len(tools) == 0:
-        print("\n⚠️  No tools configured")
+        print("\n⚠️  No tools configured (--no-tools flag used)")
         print("   Agent will work without external tool access")
     
     # Build MCP client configuration
@@ -620,6 +768,10 @@ async def langgraph_agent(
     else:
         print("   ℹ️  No MCP servers configured, continuing without tools")
     
+    # Create event handler if not provided
+    if event_handler is None:
+        event_handler = AgentEventHandler()
+    
     # Create LangGraph agent using create_agent API
     print("\n🤖 Creating LangGraph ReAct agent...")
     
@@ -644,9 +796,66 @@ async def langgraph_agent(
     print("🔄 Executing Agent...")
     print("=" * 80 + "\n")
     
-    result = await agent.ainvoke({
-        "messages": [{"role": "user", "content": input_text}]
-    })
+    final_response = ""
+    
+    # Use astream_events if requested for real-time event streaming
+    if use_streaming:
+        try:
+            async for event in agent.astream_events(
+                {"messages": [{"role": "user", "content": input_text}]},
+                version="v2"
+            ):
+                event_type = event.get("event", "")
+                
+                # Process different event types
+                if event_type == "on_chat_model_start":
+                    event_handler.on_chat_model_start(
+                        event.get("metadata", {}),
+                        [[]]
+                    )
+                
+                elif event_type == "on_chat_model_stream":
+                    chunk = event.get("data", {}).get("chunk", {})
+                    event_handler.on_chat_model_stream(chunk)
+                    # Event captured - display happens later in formatted output
+                
+                elif event_type == "on_chat_model_end":
+                    event_handler.on_chat_model_end(event.get("data", {}))
+                
+                elif event_type == "on_tool_start":
+                    tool_name = event.get("name", "unknown")
+                    tool_input = event.get("data", {}).get("input", {})
+                    event_handler.on_tool_start(
+                        {"name": tool_name},
+                        str(tool_input)
+                    )
+                    print(f"\n🔧 Tool: {tool_name}")
+                    import json
+                    try:
+                        print(f"📝 Args: {json.dumps(tool_input, indent=2)}")
+                    except:
+                        print(f"📝 Args: {tool_input}")
+                
+                elif event_type == "on_tool_end":
+                    tool_output = event.get("data", {}).get("output", "")
+                    event_handler.on_tool_end(str(tool_output))
+                    print(f"✅ Tool Result: {tool_output}")
+            
+            # Get final result after streaming
+            result = await agent.ainvoke({
+                "messages": [{"role": "user", "content": input_text}]
+            })
+            
+        except Exception as e:
+            print(f"⚠️  Streaming not available: {e}")
+            print(f"   Falling back to non-streaming execution")
+            use_streaming = False
+    
+    # Non-streaming execution (fallback or if disabled)
+    if not use_streaming:
+        result = await agent.ainvoke({
+            "messages": [{"role": "user", "content": input_text}]
+        })
     
     # Display execution trace
     print("\n📊 Agent Execution Trace:")
@@ -694,7 +903,12 @@ async def langgraph_agent(
     print("✅ LangGraph Agent Execution Complete!")
     print("=" * 80)
     
-    return final_response
+    # Return response and structured data
+    return final_response, {
+        "events": event_handler.get_events(),
+        "tool_calls": event_handler.get_tool_calls(),
+        "final_response": final_response
+    }
     
 def agent_command(
     agent_type: str,
@@ -702,21 +916,26 @@ def agent_command(
     model_name: str,
     system_instructions: Optional[str] = None,
     tools: Optional[List[Dict[str, Any]]] = None,
-    log_callback: Optional[Callable[[str], None]] = None
-) -> Tuple[str, List[str]]:
+    log_callback: Optional[Callable[[str], None]] = None,
+    suppress_stdout: bool = False
+) -> Tuple[str, List[str], Dict[str, Any]]:
     """
     Execute an agent command based on the specified agent type.
     
     Args:
-        agent_type: Type of agent to use ('default', 'lang_chain', or 'langgraph')
+        agent_type: Type of agent to use ('default', 'lang_chain', or 'lang_graph')
         input_text: The input prompt for the agent
         model_name: The name of the model to use (defaults to env var MODEL_NAME)
         system_instructions: System instructions for the agent (defaults to env var SYSTEM_INSTRUCTIONS)
         tools: List of tools/MCP servers to use (optional)
         log_callback: Optional callback function called with each log line as it's generated
+        suppress_stdout: If True, don't write to stdout (only capture for callback) - useful for Streamlit
     
     Returns:
-        Tuple of (response_text, execution_logs)
+        Tuple of (response_text, execution_logs, structured_data)
+        - response_text: Final agent response
+        - execution_logs: List of captured log lines
+        - structured_data: Dict containing events, tool_calls, and other structured info
         
     Raises:
         ValueError: If agent_type is not supported
@@ -741,10 +960,10 @@ def agent_command(
     
     # Execute with streaming log handler if callback provided
     if log_callback:
-        with StreamingLogHandler(callback=log_callback) as log_handler:
+        with StreamingLogHandler(callback=log_callback, suppress_stdout=suppress_stdout) as log_handler:
             # Route to the appropriate agent implementation
             if agent_type == "default":
-                response = default_agent(
+                response, structured_data = default_agent(
                     input_text=input_text,
                     model_name=model_name,
                     system_instructions=system_instructions,
@@ -753,7 +972,7 @@ def agent_command(
                 )
             elif agent_type == "lang_chain":
                 # LangChain agent is async, so we need to run it in an event loop
-                response = asyncio.run(langchain_agent(
+                response, structured_data = asyncio.run(langchain_agent(
                     input_text=input_text,
                     model_name=model_name,
                     system_instructions=system_instructions,
@@ -762,7 +981,7 @@ def agent_command(
                 ))
             elif agent_type == "lang_graph":
                 # LangGraph agent is async, so we need to run it in an event loop
-                response = asyncio.run(langgraph_agent(
+                response, structured_data = asyncio.run(langgraph_agent(
                     input_text=input_text,
                     model_name=model_name,
                     system_instructions=system_instructions,
@@ -775,11 +994,11 @@ def agent_command(
             
             # Get captured logs
             logs = log_handler.get_logs()
-            return response, logs
+            return response, logs, structured_data
     else:
         # Execute without log capture (legacy mode)
         if agent_type == "default":
-            response = default_agent(
+            response, structured_data = default_agent(
                 input_text=input_text,
                 model_name=model_name,
                 system_instructions=system_instructions,
@@ -787,7 +1006,7 @@ def agent_command(
                 vector_store_name=vector_store_name
             )
         elif agent_type == "lang_chain":
-            response = asyncio.run(langchain_agent(
+            response, structured_data = asyncio.run(langchain_agent(
                 input_text=input_text,
                 model_name=model_name,
                 system_instructions=system_instructions,
@@ -795,7 +1014,7 @@ def agent_command(
                 vector_store_name=vector_store_name
             ))
         elif agent_type == "lang_graph":
-            response = asyncio.run(langgraph_agent(
+            response, structured_data = asyncio.run(langgraph_agent(
                 input_text=input_text,
                 model_name=model_name,
                 system_instructions=system_instructions,
@@ -805,7 +1024,7 @@ def agent_command(
         else:
             raise ValueError(f"Unsupported agent_type: {agent_type}")
         
-        return response, []
+        return response, [], structured_data
 
 
 def main() -> None:

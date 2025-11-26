@@ -19,12 +19,13 @@ class StreamingLogHandler:
     This allows real-time processing and display of logs as they are generated.
     """
     
-    def __init__(self, callback: Optional[Callable[[str], None]] = None):
+    def __init__(self, callback: Optional[Callable[[str], None]] = None, suppress_stdout: bool = False):
         """
         Initialize the streaming log handler.
         
         Args:
             callback: Optional function to call with each log line as it's captured
+            suppress_stdout: If True, don't write to original stdout (only capture for callback)
         """
         self.callback = callback
         self.logs: List[str] = []
@@ -32,6 +33,7 @@ class StreamingLogHandler:
         self._original_stdout = None
         self._original_stderr = None
         self._capturing = False
+        self.suppress_stdout = suppress_stdout
     
     def _process_line(self, line: str):
         """Process a complete line of output."""
@@ -55,8 +57,8 @@ class StreamingLogHandler:
         self._original_stderr = sys.stderr
         
         # Create tee streams
-        sys.stdout = TeeStream(self._original_stdout, self._process_line)
-        sys.stderr = TeeStream(self._original_stderr, self._process_line)
+        sys.stdout = TeeStream(self._original_stdout, self._process_line, suppress_original=self.suppress_stdout)
+        sys.stderr = TeeStream(self._original_stderr, self._process_line, suppress_original=self.suppress_stdout)
         
         self._capturing = True
         return self
@@ -84,16 +86,18 @@ class StreamingLogHandler:
 class TeeStream:
     """Stream that writes to original stream and captures lines for callback."""
     
-    def __init__(self, original_stream, line_callback: Callable[[str], None]):
+    def __init__(self, original_stream, line_callback: Callable[[str], None], suppress_original: bool = False):
         self.original = original_stream
         self.line_callback = line_callback
         self.buffer = ""
+        self.suppress_original = suppress_original
     
     def write(self, text: str):
         """Write text to original stream and capture complete lines."""
-        # Write to original
-        self.original.write(text)
-        self.original.flush()
+        # Write to original (unless suppressed for Streamlit)
+        if not self.suppress_original:
+            self.original.write(text)
+            self.original.flush()
         
         # Buffer and process lines
         self.buffer += text

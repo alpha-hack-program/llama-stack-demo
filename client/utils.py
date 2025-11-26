@@ -204,3 +204,155 @@ Use the following context to answer the question. If the question is not related
 {context}
 </context>
 """
+
+
+def list_tool_groups(client: LlamaStackClient) -> List:
+    """
+    List all available tool groups from LlamaStack.
+    
+    Args:
+        client: The LlamaStack client
+    
+    Returns:
+        List of ToolGroup objects
+        
+    Raises:
+        Exception: If there's an error fetching tool groups
+    """
+    return list(client.toolgroups.list())
+
+
+def get_mcp_server_url(tool_group) -> Optional[str]:
+    """
+    Extract MCP server URL from a tool group object.
+    
+    This function checks multiple possible locations for the server URL:
+    - mcp_endpoint.uri attribute
+    - mcp_endpoint dict with 'uri' key
+    - mcp_endpoint as a string
+    - provider_resource_url attribute
+    - metadata dict with 'url' or 'mcp_endpoint' keys
+    
+    Args:
+        tool_group: A tool group object from LlamaStack
+    
+    Returns:
+        Server URL string if found, None otherwise
+    """
+    # Check mcp_endpoint attribute
+    if hasattr(tool_group, 'mcp_endpoint'):
+        mcp_endpoint = tool_group.mcp_endpoint
+        
+        # Try to get URI from mcp_endpoint object
+        if hasattr(mcp_endpoint, 'uri'):
+            return mcp_endpoint.uri
+        
+        # Try mcp_endpoint as a dict
+        if isinstance(mcp_endpoint, dict) and 'uri' in mcp_endpoint:
+            return mcp_endpoint['uri']
+        
+        # Try mcp_endpoint as a string
+        if isinstance(mcp_endpoint, str):
+            return mcp_endpoint
+    
+    # Check provider_resource_url attribute
+    if hasattr(tool_group, 'provider_resource_url'):
+        return tool_group.provider_resource_url
+    
+    # Check metadata dict
+    if hasattr(tool_group, 'metadata') and isinstance(tool_group.metadata, dict):
+        return tool_group.metadata.get('url') or tool_group.metadata.get('mcp_endpoint')
+    
+    return None
+
+
+def discover_tools(
+    client: LlamaStackClient,
+    vector_store_name: Optional[str] = None,
+    include_web_search: bool = True,
+    include_file_search: bool = True,
+    include_mcp: bool = True
+) -> List[dict]:
+    """
+    Auto-discover available tools from LlamaStack server.
+    
+    This function discovers and configures tools based on available tool groups:
+    - Web search tools (builtin::websearch)
+    - File search/RAG tools (builtin::rag) - requires vector_store_name
+    - MCP server tools (mcp::*)
+    
+    Args:
+        client: The LlamaStack client
+        vector_store_name: Name of vector store for file_search tools (optional)
+        include_web_search: Include web search tools if available (default: True)
+        include_file_search: Include file search tools if available (default: True)
+        include_mcp: Include MCP server tools if available (default: True)
+    
+    Returns:
+        List of tool configuration dicts ready for LlamaStack API
+        
+    Example:
+        tools = discover_tools(client, vector_store_name="my-store")
+        # Returns:
+        # [
+        #     {"type": "web_search"},
+        #     {"type": "file_search", "vector_store_ids": ["vs_123"]},
+        #     {"type": "mcp", "server_label": "my-server", "server_url": "https://..."}
+        # ]
+    """
+    from vector_stores import list_vector_stores
+    
+    tools = []
+    skipped = []
+    
+    # Get vector store ID if needed for file_search
+    vector_store_id = None
+    if include_file_search and vector_store_name:
+        try:
+            vector_stores = list_vector_stores(client, vector_store_name)
+            if vector_stores:
+                vector_store_id = vector_stores[0].identifier
+        except Exception:
+            pass
+    
+    # Fetch tool groups
+    try:
+        tool_groups = list_tool_groups(client)
+    except Exception as e:
+        raise RuntimeError(f"Failed to fetch tool groups: {e}")
+    
+    # Process each tool group
+    for group in tool_groups:
+        if not hasattr(group, 'identifier'):
+            continue
+        
+        identifier = group.identifier
+        
+        # Web search tools
+        if include_web_search and (identifier.startswith('builtin::websearch') or identifier.startswith('builtin::web_search')):
+            tools.append({"type": "web_search"})
+        
+        # File search / RAG tools
+        elif include_file_search and (identifier.startswith('builtin::rag') or identifier.startswith('builtin::file_search')):
+            if vector_store_id:
+                tools.append({
+                    "type": "file_search",
+                    "vector_store_ids": [vector_store_id]
+                })
+            else:
+                skipped.append(f"{identifier} (no vector store)")
+        
+        # MCP server tools
+        elif include_mcp and identifier.startswith('mcp::'):
+            server_url = get_mcp_server_url(group)
+            if server_url:
+                server_name = identifier.split('::', 1)[1] if '::' in identifier else identifier
+                tools.append({
+                    "type": "mcp",
+                    "server_label": server_name,
+                    "server_url": server_url
+                })
+            else:
+                skipped.append(f"{identifier} (no server URL)")
+    
+    return tools, skipped

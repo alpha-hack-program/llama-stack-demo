@@ -515,7 +515,8 @@ def execute_agent_query(
     model_name: str,
     system_instructions: str,
     tools: Optional[List[Dict[str, Any]]] = None,
-    log_callback: Optional = None
+    log_callback: Optional = None,
+    suppress_stdout: bool = False
 ) -> tuple:
     """Execute an agent query and return the response with logs.
     
@@ -526,25 +527,27 @@ def execute_agent_query(
         system_instructions: System instructions for the agent
         tools: Optional list of tools to use
         log_callback: Optional callback for streaming logs
+        suppress_stdout: If True, suppress stdout (for Streamlit)
     
     Returns:
-        Tuple of (response_text, execution_logs)
+        Tuple of (response_text, execution_logs, structured_data)
     """
     try:
-        response, logs = agent_command(
+        response, logs, structured_data = agent_command(
             agent_type=agent_type,
             input_text=input_text,
             model_name=model_name,
             system_instructions=system_instructions,
             tools=tools,
-            log_callback=log_callback
+            log_callback=log_callback,
+            suppress_stdout=suppress_stdout
         )
-        return response, logs
+        return response, logs, structured_data
     except Exception as e:
         import traceback
         error_msg = f"Error: {str(e)}"
         error_trace = traceback.format_exc()
-        return error_msg, [error_msg, error_trace]
+        return error_msg, [error_msg, error_trace], {"events": [], "tool_calls": [], "final_response": error_msg}
 
 
 # Sidebar configuration
@@ -812,8 +815,8 @@ if prompt := st.chat_input("Type your message here..."):
     
     # Generate response
     with st.chat_message("assistant"):
-        # Prepare tools
-        tools = st.session_state.selected_tools if st.session_state.selected_tools else []
+        # Prepare tools - pass None to trigger auto-discovery, or empty list for --no-tools
+        tools = st.session_state.selected_tools if st.session_state.selected_tools else None
         
         # Create containers that persist
         answer_container = st.empty()
@@ -896,17 +899,19 @@ if prompt := st.chat_input("Type your message here..."):
                             st.markdown(potential_answer)
         
         # Execute agent with streaming callback (ALWAYS with callback to capture logs)
-        response, all_logs = execute_agent_query(
+        response, all_logs, structured_data = execute_agent_query(
             agent_type=st.session_state.agent_type,
             input_text=prompt,
             model_name=st.session_state.selected_model,
             system_instructions=st.session_state.system_instructions,
             tools=tools,
-            log_callback=log_callback  # ALWAYS provide callback
+            log_callback=log_callback,  # ALWAYS provide callback
+            suppress_stdout=True  # Don't write to stdout in Streamlit - use callback only
         )
         
-        # Store logs permanently in session state
+        # Store logs and structured data permanently in session state
         st.session_state.last_execution_logs = all_logs
+        st.session_state.last_structured_data = structured_data
         
         # Clear the status (if it was shown)
         logs_container.empty()

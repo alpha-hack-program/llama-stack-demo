@@ -46,6 +46,8 @@ COPY health-server.py .
 COPY files.py .
 COPY utils.py .
 COPY vector_stores.py .
+COPY streaming_logger.py .
+COPY agent_events.py .
 COPY commands/ ./commands/
 
 # Copy scripts

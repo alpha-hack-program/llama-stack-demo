@@ -8,7 +8,7 @@ import os
 import sys
 from typing import List, Optional, Any
 from llama_stack_client import LlamaStackClient
-from utils import create_client
+from utils import create_client, list_tool_groups
 
 
 def groups_command(verbose: bool = False) -> List[Any]:
@@ -32,7 +32,7 @@ def groups_command(verbose: bool = False) -> List[Any]:
     # Fetch all tool groups
     print("Fetching tool groups...")
     try:
-        tool_groups = list(client.toolgroups.list())
+        tool_groups = list_tool_groups(client)
     except Exception as e:
         print(f"Error fetching tool groups: {e}")
         return []
@@ -131,7 +131,7 @@ def list_tools_command(
     # Fetch all tool groups
     print("Fetching tool groups...")
     try:
-        tool_groups = list(client.toolgroups.list())
+        tool_groups = list_tool_groups(client)
     except Exception as e:
         print(f"Error fetching tool groups: {e}")
         sys.exit(1)
