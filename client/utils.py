@@ -117,12 +117,19 @@ def create_langchain_client(
     
     print(f"Creating LangChain client with base URL: {openai_endpoint}")
     
+    # Configurar razonamiento
+    reasoning = {
+        "effort": "medium",  # 'low', 'medium', o 'high'
+        "summary": "auto",   # 'detailed', 'auto', o None
+    }
+
     # Create and return ChatOpenAI client
     return ChatOpenAI(
         model=model_name,
         api_key=api_key,
         base_url=openai_endpoint,
         temperature=0.0,
+        reasoning=reasoning,
     )
 
 
