@@ -24,6 +24,9 @@ Models deployed:
   {{- if .maxTokens }}
     - MAX_TOKENS: "{{ .maxTokens }}"
   {{- end }}
+  {{- if .maxModelLen }}
+    - MAX\_MODEL\_LEN: "{{ .maxModelLen }}"
+  {{- end }}
 {{- end }}
 
 MCP Servers deployed:
