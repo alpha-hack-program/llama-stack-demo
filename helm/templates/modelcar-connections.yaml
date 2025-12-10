@@ -1,4 +1,5 @@
 {{- range .Values.models }}
+{{- if not .url }}
 ---
 kind: Secret
 apiVersion: v1
@@ -15,4 +16,5 @@ metadata:
 stringData:
   URI: oci://{{ .image }}
 type: Opaque
+{{- end }}
 {{- end }}

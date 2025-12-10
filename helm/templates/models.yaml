@@ -1,6 +1,7 @@
 {{- $appName := .Values.app }}
 
 {{- range .Values.models }}
+{{- if not .url }}
 ---
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
@@ -223,4 +224,5 @@ spec:
         medium: Memory
         sizeLimit: {{ default "2Gi" .shmSizeLimit }}
       name: shm
+{{- end }}
 {{- end }}

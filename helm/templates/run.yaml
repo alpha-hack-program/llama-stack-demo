@@ -26,8 +26,8 @@ data:
         config:
           url: ${env.{{ include "rag-lsd.envVarName" .name }}_URL}
           model: ${env.{{ include "rag-lsd.envVarName" .name }}_MODEL}
-          {{- if .api_key }}
-          api_key: ${env.{{ include "rag-lsd.envVarName" .name }}_API_KEY}
+          {{- if .api_token }}
+          api_token: ${env.{{ include "rag-lsd.envVarName" .name }}_API_TOKEN:=fake}
           {{- end }}
           {{- if .tls_verify }}
           tls_verify: ${env.{{ include "rag-lsd.envVarName" .name }}_TLS_VERIFY:false}

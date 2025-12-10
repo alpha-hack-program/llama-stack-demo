@@ -14,7 +14,9 @@ Models deployed:
     - URL: "{{ "http://" }}{{ .name }}-predictor:8080/v1"
     - MODEL: "{{ .name }}"
     - IMAGE: "{{ .image }}"
+  {{- if and .runtime .runtime.image }}
     - RUNTIME: "{{ .runtime.image }}"
+  {{- end }}
   {{- if .api_key }}
     - API_KEY:: "{{ .api_key }}"
   {{- end }}

@@ -70,7 +70,8 @@ models:
       templateDisplayName: vLLM NVIDIA GPU ServingRuntime for KServe
       version: v0.9.1.0
       # image: quay.io/modh/vllm:rhoai-2.25-cuda
-      image: registry.redhat.io/rhaiis/vllm-cuda-rhel9@sha256:ad756c01ec99a99cc7d93401c41b8d92ca96fb1ab7c5262919d818f2be4f3768
+      # image: registry.redhat.io/rhaiis/vllm-cuda-rhel9@sha256:ad756c01ec99a99cc7d93401c41b8d92ca96fb1ab7c5262919d818f2be4f3768
+      image: registry.redhat.io/rhaiis/vllm-cuda-rhel9:3.2.1
       resources:
         limits:
           cpu: '8'
@@ -95,6 +96,11 @@ models:
       - llama3_json
       - --chat-template
       - /opt/app-root/template/tool_chat_template_llama3.1_json.jinja
+  - name: Llama-4-Scout-17B-16E-W4A16
+    strict: true
+    url: https://litellm-litemaas.apps.prod.rhoai.rh-aiservices-bu.com/v1
+    api_token: sk-t... # <== API token
+    maxTokens: '4096' # llama stack vllm max token, default is 4096
 
 mcpServers:
   - id: eligibility-engine
@@ -184,27 +190,28 @@ mcpServers:
   #       - apiGroups: [""]
   #         resources: ["namespaces"]
   #         verbs: ["get", "list"]
-  # - id: finance-engine
-  #   provider_id: model-context-protocol
-  #   runtime: rust
-  #   vcs:
-  #     uri: https://github.com/alpha-hack-program/finance-engine-mcp-rs.git
-  #     ref: main
-  #     path: .
-  #   image: quay.io/atarazana/finance-engine-mcp-rs:1.1.2
-  #   mcp_transport: "sse"
-  #   protocol: "http"
-  #   host: finance-engine
-  #   port: 8000
-  #   uri: "/sse"
-  #   replicas: 1
-  #   resources:
-  #     limits:
-  #       cpu: 500m
-  #       memory: 128Mi
-  #     requests:
-  #       cpu: 250m
-  #       memory: 64Mi
-  #   env:
-  #     - name: RUST_LOG
-  #       value: "debug"
+  - id: finance-engine
+    provider_id: model-context-protocol
+    runtime: rust
+    vcs:
+      uri: https://github.com/alpha-hack-program/finance-engine-mcp-rs.git
+      ref: main
+      path: .
+    image: quay.io/atarazana/finance-engine-mcp-rs:2.0.3
+    mcp_transport: "sse"
+    protocol: "http"
+    host: finance-engine
+    port: 8000
+    uri: "/sse"
+    replicas: 1
+    addAppConfig: true
+    resources:
+      limits:
+        cpu: 500m
+        memory: 128Mi
+      requests:
+        cpu: 250m
+        memory: 64Mi
+    env:
+      - name: RUST_LOG
+        value: "debug"

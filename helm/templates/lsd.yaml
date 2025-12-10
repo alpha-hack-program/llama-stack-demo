@@ -30,11 +30,11 @@ spec:
             secretKeyRef:
               key: {{ include "rag-lsd.envVarName" .name }}_URL
               name: {{ $appName }}-secret
-        {{- if .api_key }}
-        - name: {{ include "rag-lsd.envVarName" .name }}_API_KEY
+        {{- if .api_token }}
+        - name: {{ include "rag-lsd.envVarName" .name }}_API_TOKEN
           valueFrom:
             secretKeyRef:
-              key: {{ include "rag-lsd.envVarName" .name }}_API_KEY
+              key: {{ include "rag-lsd.envVarName" .name }}_API_TOKEN
               name: {{ $appName }}-secret
         {{- end }}
         {{- if .tls_verify }}
