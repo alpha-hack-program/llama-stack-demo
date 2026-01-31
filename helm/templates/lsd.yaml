@@ -54,10 +54,54 @@ spec:
               name: {{ $appName }}-secret
         {{- end }}
         {{- end }}
+        {{- if .Values.postgres }}
+        - name: POSTGRES_HOST
+          value: {{ .Values.postgres.host | default "pg-lsd-service" | quote }}
+        - name: POSTGRES_PORT
+          value: {{ .Values.postgres.port | default 5432 | quote }}
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: pg-lsd-secret
+              key: POSTGRES_DB
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: pg-lsd-secret
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: pg-lsd-secret
+              key: POSTGRES_PASSWORD
+        {{- if .Values.postgres.enablePgVector }}
+        - name: ENABLE_PGVECTOR
+          value: {{ .Values.postgres.enablePgVector | default false | quote }}
+        - name: PGVECTOR_HOST
+          value: {{ .Values.postgres.host | default "pg-lsd-service" | quote }}
+        - name: PGVECTOR_PORT
+          value: {{ .Values.postgres.port | default 5432 | quote }}
+        - name: PGVECTOR_DB
+          valueFrom:
+            secretKeyRef:
+              name: pgvector-lsd-secret
+              key: PGVECTOR_DB
+        - name: PGVECTOR_USER
+          valueFrom:
+            secretKeyRef:
+              name: pgvector-lsd-secret
+              key: PGVECTOR_USER
+        - name: PGVECTOR_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: pgvector-lsd-secret
+              key: PGVECTOR_PASSWORD
+        {{- end}}
+        {{- end }}
         - name: MILVUS_DB_PATH
-          value: {{ .Values.milvusDbPath }}
+          value: {{ .Values.milvusDbPath | quote }}
         - name: FMS_ORCHESTRATOR_URL
-          value: {{ .Values.fmsOchestratorUrl }}
+          value: {{ .Values.fmsOchestratorUrl | quote }}
         - name: OTEL_SERVICE_NAME
           value: {{ .Values.app }}
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -71,7 +115,7 @@ spec:
         - name: OTEL_RESOURCE_ATTRIBUTES
           value: 'service.name=llamastack-user1-canopy,service.version=1.0.0,deployment.environment=development'
         - name: OTEL_SERVICE_VERSION
-          value: 1.0.0
+          value: '1.0.0'
         - name: OTEL_DEPLOYMENT_ENVIRONMENT
           value: development
         - name: OTEL_PYTHON_DISABLED_INSTRUMENTATIONS
@@ -123,7 +167,7 @@ kind: Route
 metadata:
   name: "{{ .Values.app }}-route"
   annotations:
-    haproxy.router.openshift.io/timeout: {{ .Values.routeTimeout | default "1m" }}
+    haproxy.router.openshift.io/timeout: {{ .Values.routeTimeout | default "1m" | quote }}
 spec:
   port:
     targetPort: http

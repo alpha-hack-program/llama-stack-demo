@@ -34,6 +34,15 @@ loaderJobRetries: 60
 milvusDbPath: /tmp/milvus.db
 fmsOchestratorUrl: http://localhost:8080
 
+# PostgreSQL configuration
+postgres:
+  enablePgVector: true
+  host: pg-lsd-service
+  port: 5432
+  user: llamastack
+  password: llamastack
+  db: llamastack
+
 docsFolder: /data/docs
 
 # Local models - deployed in the cluster (safe to commit to git)

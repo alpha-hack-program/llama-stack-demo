@@ -1,3 +1,4 @@
+---
 apiVersion: v1
 kind: Secret
 metadata:
@@ -10,10 +11,28 @@ metadata:
     app.kubernetes.io/part-of: llamastack
 type: Opaque
 stringData:
-  POSTGRES_DB: "llamastack"
-  POSTGRES_USER: "llamastack"
-  POSTGRES_PASSWORD: "llamastack"
-
+  POSTGRES_DB: {{ .Values.postgres.db | default "llamastack" | quote }}
+  POSTGRES_USER: {{ .Values.postgres.user | default "llamastack" | quote }}
+  POSTGRES_PASSWORD: {{ .Values.postgres.password | default "llamastack" | quote }}
+---
+{{- if .Values.postgres.enablePgVector }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pgvector-lsd-secret
+  labels:
+    app: pgvector-lsd
+    app.kubernetes.io/component: pgvector-lsd-secret
+    app.kubernetes.io/instance: pgvector-lsd-secret
+    app.kubernetes.io/name: pgvector-lsd-secret
+    app.kubernetes.io/part-of: llamastack
+type: Opaque
+stringData:
+  PGVECTOR_DB: {{ .Values.postgres.db | default "llamastack" | quote }}
+  PGVECTOR_USER: {{ .Values.postgres.user | default "llamastack" | quote }}
+  PGVECTOR_PASSWORD: {{ .Values.postgres.password | default "llamastack" | quote }}
+{{- end }}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -128,12 +147,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: pg-lsd-service
+  name: {{ .Values.postgres.host | default "pg-lsd-service" | quote }}
   labels:
     app: pg-lsd
-    app.kubernetes.io/component: pg-lsd-service
-    app.kubernetes.io/instance: pg-lsd-service
-    app.kubernetes.io/name: pg-lsd-service
+    app.kubernetes.io/component: {{ .Values.postgres.host | default "pg-lsd-service" | quote }}
+    app.kubernetes.io/instance: {{ .Values.postgres.host | default "pg-lsd-service" | quote }}
+    app.kubernetes.io/name: {{ .Values.postgres.host | default "pg-lsd-service" | quote }}
     app.kubernetes.io/part-of: llamastack
 spec:
   selector:
