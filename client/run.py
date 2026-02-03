@@ -120,6 +120,12 @@ Examples:
         default="default",
         help="Ranker to use for scoring (default: 'default')"
     )
+    search_parser.add_argument(
+        "--search-mode",
+        type=str,
+        default="vector",
+        help="Search mode to use (default: 'vector'), options: vector, keyword, hybrid"
+    )
     
     # Agent command
     agent_parser = subparsers.add_parser(
@@ -253,6 +259,7 @@ Examples:
             search_command(
                 query=args.query,
                 vector_store_id=args.vector_store_id,
+                search_mode=args.search_mode,
                 max_results=args.max_results,
                 score_threshold=args.score_threshold,
                 ranker=args.ranker

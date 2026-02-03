@@ -50,7 +50,10 @@ def get_embedding_model(
         raise ValueError("Embedding model provider is required")
     
     models = client.models.list()
+    print(f"Models: {models}")
     for model in models:
+        print(f"Model: {model.identifier} {model.provider_id} {model.api_model_type}")
+        print(f"Embedding model ID: {embedding_model_id} {embedding_model_provider}")
         if model.identifier == embedding_model_id and model.provider_id == embedding_model_provider and model.api_model_type == "embedding":
             return model
     

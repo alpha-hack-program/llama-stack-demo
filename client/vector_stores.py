@@ -120,6 +120,7 @@ def search_vector_store(
     client: LlamaStackClient,
     vector_store_id: str,
     query: str,
+    search_mode: str = "vector",
     max_num_results: int = 10,
     ranker: str = "default",
     score_threshold: float = 0.8,
@@ -140,5 +141,5 @@ def search_vector_store(
         ranker=ranker,
         score_threshold=score_threshold,
     )
-    return client.vector_stores.search(vector_store_id=vector_store_id, query=query, ranking_options=ranking_options, max_num_results=max_num_results)
+    return client.vector_stores.search(vector_store_id=vector_store_id, query=query, search_mode=search_mode, ranking_options=ranking_options, max_num_results=max_num_results)
 

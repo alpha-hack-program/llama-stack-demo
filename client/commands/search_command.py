@@ -16,6 +16,7 @@ from vector_stores import search_vector_store, list_vector_stores
 def search_command(
     query: str,
     vector_store_id: Optional[str] = None,
+    search_mode: str = "vector",
     max_results: int = 10,
     score_threshold: float = 0.8,
     ranker: str = "default"
@@ -52,13 +53,14 @@ def search_command(
     
     # Perform search
     print(f"\nSearching for: '{query}'")
-    print(f"Parameters: max_results={max_results}, score_threshold={score_threshold}, ranker={ranker}")
+    print(f"Parameters: max_results={max_results}, score_threshold={score_threshold}, ranker={ranker}, search_mode={search_mode}")
     print("-" * 80)
     
     search_response: VectorStoreSearchResponse = search_vector_store(
         client=client,
         vector_store_id=vector_store_id,
         query=query,
+        search_mode=search_mode,
         max_num_results=max_results,
         ranker=ranker,
         score_threshold=score_threshold
