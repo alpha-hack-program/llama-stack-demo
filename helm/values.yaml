@@ -34,6 +34,26 @@ loaderJobRetries: 60
 milvusDbPath: /tmp/milvus.db
 fmsOchestratorUrl: http://localhost:8080
 
+# Pipelines configuration
+pipelines:
+  enabled: true
+  store: kubernetes
+  connection:
+    name: pipelines
+    type: s3
+    typeProtocol: s3
+    typeRef: s3
+    description: 'Pipelines connection'
+    displayName: 'Pipelines connection'
+    awsAccessKeyId: minio
+    awsSecretAccessKey: minio123
+    awsDefaultRegion: none
+    awsS3Bucket: pipelines
+    # awsS3Endpoint: http://minio.minio.svc:9000
+    host: minio.minio.svc
+    port: 9000
+    scheme: http
+
 # PostgreSQL configuration
 postgres:
   # Deploy PostgreSQL infrastructure

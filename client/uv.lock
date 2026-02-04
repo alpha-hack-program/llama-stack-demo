@@ -601,7 +601,7 @@ wheels = [
 
 [[package]]
 name = "llama-stack-client"
-version = "0.3.2"
+version = "0.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -620,9 +620,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b5/3f/e7287898d5096066549cbe473a6177667d3fde78f30bb4c4009686693d35/llama_stack_client-0.3.2.tar.gz", hash = "sha256:6ad5e07d827d1b605110de49d66a7138112366e0d91a980939e10c2011c15671", size = 340439 }
+sdist = { url = "https://files.pythonhosted.org/packages/5d/b5/fdfef39a1dedc319b98782a3b2e047b9aae394ca59010fb25146aef5edca/llama_stack_client-0.4.2.tar.gz", hash = "sha256:1277bf563531d9bc476e305f2d2bead9900986d426a2e32c9adf4b6a464804c3", size = 352951 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/be/c6/93db0d154ad1de1d96b615007cdab7d25709ed5425e203c64b04435b1ee7/llama_stack_client-0.3.2-py3-none-any.whl", hash = "sha256:a0143759ceba20c671bb60d95bdec71c987a90f9348d0ae16644c37a165678ae", size = 425234 },
+    { url = "https://files.pythonhosted.org/packages/5f/af/e1c5065b06f98f832a9f74cb8e092e88fd0c10fdf670ab2aecd614548768/llama_stack_client-0.4.2-py3-none-any.whl", hash = "sha256:d6e1c73391bdc3494fe1fa9ce7575a4749d13d111718e458e874ece544988729", size = 375941 },
 ]
 
 [[package]]
@@ -1136,7 +1136,7 @@ requires-dist = [
     { name = "langchain-mcp-adapters", specifier = "==0.1.13" },
     { name = "langchain-openai", specifier = "==1.1.0" },
     { name = "langgraph", specifier = "==1.0.3" },
-    { name = "llama-stack-client", specifier = "==0.3.2" },
+    { name = "llama-stack-client", specifier = "==0.4.2" },
     { name = "pydantic", specifier = "==2.11.7" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pyyaml", specifier = "==6.0.2" },

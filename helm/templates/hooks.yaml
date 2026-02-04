@@ -2,6 +2,20 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
+  name: rag-pipeline-config
+  labels:
+    app: {{ .Values.app }}
+    app.kubernetes.io/name: {{ include "rag-lsd.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: {{ .Values.partOf }}
+data:
+  LLAMA_STACK_HOST: "{{ .Values.app }}-service"
+  LLAMA_STACK_PORT: {{ .Values.lsdPort | toString | quote }}
+  LLAMA_STACK_SECURE: "False"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
   name: {{ .Values.app }}-config
   labels:
     app: {{ .Values.app }}
