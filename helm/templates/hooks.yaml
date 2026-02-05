@@ -812,6 +812,27 @@ spec:
             echo ""
             {{- end }}
             
+            # Wait for Llama Stack to be ready
+            echo "=== Llama Stack Health Check ==="
+            LLAMA_STACK_URL="http://{{ .Values.app }}-service:{{ .Values.lsdPort }}/docs"
+            echo "Waiting for Llama Stack at ${LLAMA_STACK_URL}..."
+            for i in $(seq 1 ${MAX_RETRIES}); do
+              echo "Attempt ${i}/${MAX_RETRIES}: Checking Llama Stack..."
+              if curl -sf --max-time 10 "${LLAMA_STACK_URL}" > /dev/null 2>&1; then
+                echo "✓ Llama Stack is ready!"
+                echo ""
+                break
+              else
+                echo "Llama Stack not ready yet, waiting ${DELAY}s..."
+                sleep ${DELAY}
+              fi
+            done
+            
+            if [ $i -eq ${MAX_RETRIES} ]; then
+              echo "❌ ERROR: Llama Stack failed to become ready after ${MAX_RETRIES} attempts"
+              exit 1
+            fi
+            
             # Wait for DSPA API to be ready
             echo "=== DSPA Health Check ==="
             for i in $(seq 1 ${MAX_RETRIES}); do
