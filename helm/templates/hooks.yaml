@@ -23,9 +23,9 @@ metadata:
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/part-of: {{ .Values.partOf }}
 data:
-  EMBEDDING_MODEL: "{{ .Values.lsdEmbeddingModel.modelProvider }}/{{ .Values.lsdEmbeddingModel.providerModelId }}"
-  EMBEDDING_DIMENSION: {{ .Values.lsdEmbeddingModel.vectorDimension | toString | quote }}
-  EMBEDDING_MODEL_PROVIDER: "{{ .Values.lsdEmbeddingModel.modelProvider }}" 
+  EMBEDDING_MODEL: "{{ .Values.ragDefaults.embeddingModel.modelProvider }}/{{ .Values.ragDefaults.embeddingModel.providerModelId }}"
+  EMBEDDING_DIMENSION: {{ .Values.ragDefaults.embeddingModel.vectorDimension | toString | quote }}
+  EMBEDDING_MODEL_PROVIDER: "{{ .Values.ragDefaults.embeddingModel.modelProvider }}" 
   VECTOR_STORE_PROVIDER_ID: "{{ .Values.lsdVectorStoreProviderId }}"
   VECTOR_STORE_NAME: "{{ .Values.lsdVectorStoreName }}"
   RANKER: "{{ .Values.lsdRanker }}"
@@ -36,8 +36,8 @@ data:
   LLAMA_STACK_PORT: {{ .Values.lsdPort | toString | quote }}
   LLAMA_STACK_SECURE: "False"
   DOCS_FOLDER: "{{ .Values.docsFolder }}"
-  CHUNK_SIZE_IN_TOKENS: "{{ .Values.lsdChunkSizeInTokens }}"
-  CHUNK_OVERLAP_IN_TOKENS: "{{ .Values.lsdChunkOverlapInTokens }}"
+  CHUNK_SIZE_IN_TOKENS: "{{ .Values.ragDefaults.chunkSizeInTokens }}"
+  CHUNK_OVERLAP_IN_TOKENS: "{{ .Values.ragDefaults.chunkOverlapInTokens }}"
 ---
 # apiVersion: batch/v1
 # kind: Job
@@ -962,15 +962,15 @@ spec:
         - name: PIPELINE_VECTOR_STORE_NAME
           value: {{ .Values.pipelines.runner.params.vectorStoreName | default "rag-store" | quote }}
         - name: PIPELINE_EMBEDDING_MODEL
-          value: {{ .Values.pipelines.runner.params.embeddingModel | default "sentence-transformers/nomic-ai/nomic-embed-text-v1.5" | quote }}
+          value: {{ .Values.ragDefaults.embeddingModel.modelProvider }}/{{ .Values.ragDefaults.embeddingModel.providerModelId }}
         - name: PIPELINE_EMBEDDING_DIMENSION
-          value: {{ .Values.pipelines.runner.params.embeddingDimension | default "768" | quote }}
+          value: {{ .Values.ragDefaults.embeddingModel.vectorDimension | toString | quote }}
         - name: PIPELINE_RANKER
           value: {{ .Values.pipelines.runner.params.ranker | default "default" | quote }}
         - name: PIPELINE_CHUNK_SIZE_IN_TOKENS
-          value: {{ .Values.pipelines.runner.params.chunkSizeInTokens | default "800" | quote }}
+          value: {{ .Values.ragDefaults.chunkSizeInTokens | toString | quote }}
         - name: PIPELINE_CHUNK_OVERLAP_IN_TOKENS
-          value: {{ .Values.pipelines.runner.params.chunkOverlapInTokens | default "400" | quote }}
+          value: {{ .Values.ragDefaults.chunkOverlapInTokens | toString | quote }}
         - name: PIPELINE_USE_GPU
           value: {{ .Values.pipelines.runner.params.useGpu | default "false" | quote }}
         resources:

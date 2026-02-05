@@ -10,15 +10,16 @@ lsdPort: 8321
 # Route timeout for HAProxy (default 30s is too short for model loading)
 routeTimeout: 1m
 
-# Sentence Transformers model
-lsdEmbeddingModel:
-  modelId: nomic-embed-text-v1.5
-  providerModelId: nomic-ai/nomic-embed-text-v1.5
-  vectorDimension: 768
-  modelProvider: sentence-transformers
+# RAG default values
+ragDefaults:
+  embeddingModel:
+    modelId: nomic-embed-text-v1.5
+    providerModelId: nomic-ai/nomic-embed-text-v1.5
+    vectorDimension: 768
+    modelProvider: sentence-transformers
+  chunkSizeInTokens: 800
+  chunkOverlapInTokens: 400
 
-lsdChunkSizeInTokens: 800
-lsdChunkOverlapInTokens: 400
 lsdVectorStoreProviderId: milvus
 lsdVectorStoreName: rag-store
 lsdRanker: default
@@ -54,7 +55,6 @@ pipelines:
     awsSecretAccessKey: minio123
     awsDefaultRegion: none
     awsS3Bucket: pipelines
-    # awsS3Endpoint: http://minio.minio.svc:9000
     host: minio.minio.svc
     port: 9000
     scheme: http
@@ -82,12 +82,12 @@ pipelines:
       gitRef: next
       filenames: "2025_61-FR_INT.html.pdf, 2025_61-FR.html.pdf, 2025_102_SD.html.pdf, 2025-47-SA-Act.html.pdf, 2025-47-SA-R1.html.pdf"
       vectorStoreName: rag-store
-      embeddingModel: sentence-transformers/nomic-ai/nomic-embed-text-v1.5
-      embeddingDimension: "768"
       ranker: default
-      chunkSizeInTokens: "800"
-      chunkOverlapInTokens: "400"
       useGpu: false
+      # embeddingModel: sentence-transformers/nomic-ai/nomic-embed-text-v1.5 ==> default values in ragDefaults
+      # embeddingDimension: "768" ==> default values in ragDefaults
+      # chunkSizeInTokens: "800" ==> default values in ragDefaults
+      # chunkOverlapInTokens: "400" ==> default values in ragDefaults
 
 # PostgreSQL configuration
 postgres:
