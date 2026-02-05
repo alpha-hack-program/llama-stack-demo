@@ -1,142 +1,226 @@
-# LLAMA STACK DEMO
+# Llama Stack Demo
 
-Welcome to this Llama Stack Demo you can run easily on Red Hat OpenShift AI (RHOAI). It's a comprehensive demo that deploys everything you need to test agents with MCP tools on RHOAI using Llama Stack:
-- Models: IBM Granite 3.3 and Llama 3.1 deployed using vLLM Serving Runtime and automatically added to Llama Stack
-- MCP Servers: deployed as normal deployments and automatically added to Llama Stack
-- Llama Stack Server: Llama Stack Server is deployed using the Llama Stack Operator included in Red Hat OpenShift AI
+Welcome to the Llama Stack Demo for Red Hat OpenShift AI (RHOAI). This comprehensive demo deploys everything you need to test AI agents with MCP tools on RHOAI using Llama Stack:
 
-## Trip Report
+- **Models**: Llama 3.1 8B (quantized w4a16) deployed using vLLM Serving Runtime and automatically registered in Llama Stack
+- **MCP Servers**: Rust-based MCP servers deployed as standard deployments and automatically configured in Llama Stack
+- **Llama Stack Server**: Deployed using the **Llama Stack Operator** (included in RHOAI) via the `LlamaStackDistribution` Custom Resource
+- **Vector Databases**: Support for Milvus (inline and remote) and PostgreSQL with pgvector
+- **RAG Pipelines**: Automated document ingestion using Kubeflow Pipelines (DSPA)
 
-I started with an MCP Server using TypeScript generated using Cursor.ai straight from legal documents. It tried to cover all the legal elements, it was complex and the logic tricky, several iterations to fine tune the descriptions to make it kind of work in a small model (SLM) like IBM Granite and Llama 3.2 (~7B both of them). I changed my strategy and also the programing language, from TypeScript to Rust and from the full logic generated from the legal documents to a decision table generated with Cursor.ai but with much more guidance (and simplification) from my side. This time it worked pretty well with Claude Desktop but not quite with the SLMs, the latest iteration had to do with the names of some variables, is_single_parent_family and number_of_children_after...
+## Table of Contents
 
-The inner to outer loop:
-- decision table
-- code
-- unit testing
-- MCP Inspector
-- Claude Desktop
-- Llama Stack Local with models in RHOAI
-- Llama Stack on RHOAI
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Components](#components)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Business Rules](#business-rules)
+- [Uninstall](#uninstall)
+- [Monitoring](#monitoring)
 
+## Overview
 
-## Detailed description 
+The Eligibility Assessment System is powered by Llama Stack and Model Context Protocol (MCP). It helps assess eligibility for Family Care Unpaid Leave Support based on the Republic of Lysmark's Act No. 2025/47-SA.
 
-Eligibility Assessment System powered by Llama Stack and Model Context Protocol (MCP)!
-This system helps assess eligibility for Family Care Unpaid Leave Support based on the Republic of Lysmark's Act No. 2025/47-SA.
-To get started quickly, jump straight to [installation](#install).
+The system combines Llama Stack with MCP servers and Retrieval Augmented Generation (RAG) to provide accurate, context-aware assessments for:
 
+- Care for sick/injured family members
+- Childcare for multiple children
+- Adoption cases
+- Single-parent family scenarios
 
-The Eligibility Assessment MCP Llama Stack system is an intelligent solution for evaluating eligibility for Family Care Unpaid Leave Support based on the Republic of Lysmark's legislation (Act No. 2025/47-SA and related regulations). The system combines the power of Llama Stack with Model Context Protocol (MCP) servers and Retrieval Augmented Generation (RAG) to provide accurate, context-aware assessments.
+### What Gets Deployed
 
-This system is designed to help users understand their eligibility for unpaid leave assistance in various family care situations, including care for sick/injured family members, childcare for multiple children, adoption cases, and single-parent family scenarios.
+The Helm chart deploys:
 
-This deployment includes a Helm chart for setting up:
+- **LlamaStackDistribution CR**: Processed by the Llama Stack Operator to create a fully configured Llama Stack server with all providers
+- **Streamlit Application**: Interactive UI for eligibility consultations (`{app}-app`)
+- **FastAPI Server**: REST API for programmatic access (`{app}-api`)
+- **MCP Servers**: Eligibility Engine, Compatibility Engine, Cluster Insights, Finance Engine
+- **Vector Databases**: Milvus (with Attu UI) and/or PostgreSQL (with CloudBeaver UI)
+- **Models**: Llama 3.1 8B via KServe InferenceService (using vLLM runtime)
+- **Kubeflow Pipelines**: DSPA for automated document ingestion (optional)
 
-- An OpenShift AI Project with all necessary components
-- Llama Stack distribution with Llama 3.1 8B model for natural language processing  
-- MCP server for the eligibility engine with specialized knowledge processing
-- Vector database (Milvus) with embedded legal documents for RAG capabilities
-- Document loader service to populate the knowledge base with Act No. 2025/47-SA and regulations
-- Llama Stack Playground interface for interactive eligibility consultations
-
-Use this project to quickly deploy an intelligent eligibility assessment system that provides accurate, legally-informed guidance on Family Care Unpaid Leave Support eligibility. 🏛️
-
-### See it in action
-
-Experience the Eligibility Assessment System through the Llama Stack Playground interface. After deployment, you can interact with the system to:
-- Ask questions about eligibility requirements for different family care scenarios
-- Get detailed assessments based on the legal framework of Act No. 2025/47-SA
-- Understand the documentation needed for applications
-- Learn about financial assistance amounts and duration limits
-
-### Architecture diagrams
+## Architecture
 
 ![architecture.png](images/architecture.png)
 
-### References 
+### References
 
-- [Llama Stack Distribution](https://llama-stack.readthedocs.io/en/latest/) - The foundational platform for LLM applications
-- [Model Context Protocol (MCP)](https://spec.modelcontextprotocol.io/) - Protocol for integrating context sources with language models  
-- [Eligibility Engine MCP Server](https://github.com/alpha-hack-program/eligibility-engine-mcp-rs) - Rust-based MCP server for eligibility processing
-- Llama Stack Docker images: [quay.io/opendatahub/llama-stack:odh](https://quay.io/opendatahub/llama-stack:odh)
-- Model images from Red Hat AI Services ModelCar Catalog
-- Based on Republic of Lysmark's Act No. 2025/47-SA: Family Care Unpaid Leave Support Act
+- [Llama Stack Documentation](https://llama-stack.readthedocs.io/en/latest/)
+- [Model Context Protocol (MCP)](https://spec.modelcontextprotocol.io/)
+- [Eligibility Engine MCP Server](https://github.com/alpha-hack-program/eligibility-engine-mcp-rs)
+- [Compatibility Engine MCP Server](https://github.com/alpha-hack-program/compatibility-engine-mcp-rs)
+- [Cluster Insights MCP Server](https://github.com/alpha-hack-program/cluster-insights-mcp-rs)
+- [Finance Engine MCP Server](https://github.com/alpha-hack-program/finance-engine-mcp-rs)
 
-## Requirements 
+## Components
 
-### Recommended hardware requirements 
+### Vector Databases
 
-- **GPU**: 1x NVIDIA A10G or equivalent (for optimal LLM performance)
-- **CPU**: 8 cores 
-- **Memory**: 24 Gi (to handle Llama Stack, MCP servers, and vector database)
-- **Storage**: 20Gi (for models, vector database, and document storage)
+The system supports multiple vector database configurations for RAG capabilities:
 
-Note: The system uses quantized Llama 3.1 8B model (w4a16) for efficient GPU utilization while maintaining good performance.
+#### Milvus Inline
 
-### Minimum hardware requirements 
+Llama Stack's built-in Milvus provider stores vectors locally using a file-based database (`/tmp/milvus.db`). This is always available as the `milvus` provider.
 
-- **GPU**: 1x NVIDIA A10G-SHARED (shared GPU allocation)
-- **CPU**: 6 cores 
-- **Memory**: 16 Gi 
-- **Storage**: 10Gi 
+- **Use case**: Development, testing, single-instance deployments
+- **Provider ID**: `milvus`
 
-### Required software  
+#### Milvus Remote (Standalone)
 
-- Red Hat OpenShift 4.16+ 
-- Red Hat OpenShift AI 2.16+ 
-- Dependencies for [Single-model server](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/2.16/html/installing_and_uninstalling_openshift_ai_self-managed/installing-the-single-model-serving-platform_component-install#configuring-automated-installation-of-kserve_component-install):
-    - Red Hat OpenShift Service Mesh
-    - Red Hat OpenShift Serverless
-- **Llama Stack Components**:
-    - Llama Stack Distribution with vLLM runtime
-    - Model Context Protocol (MCP) server support
-    - Vector database capabilities (Milvus)
-- **Container Images**:
-    - Llama Stack: `quay.io/opendatahub/llama-stack:odh`
-    - vLLM Runtime: `quay.io/modh/vllm:rhoai-2.23-cuda`
-    - Eligibility Engine MCP: `quay.io/atarazana/eligibility-engine-mcp-rs:latest`
+When `milvus.deploy: true`, the chart deploys a standalone Milvus instance:
 
-### Required permissions
+| Component | Description |
+|-----------|-------------|
+| **etcd** | Distributed key-value store for Milvus metadata |
+| **milvus-standalone** | Milvus vector database server |
+| **Attu** | Web-based Milvus management UI |
 
-- Standard user. No elevated cluster permissions required 
+When `milvus.enableRemote: true`, the `remote::milvus` provider (`milvus-remote`) is configured in Llama Stack.
 
-## Install
+- **Use case**: Production deployments, persistent vector storage
+- **Provider ID**: `milvus-remote`
 
-**Please note before you start**
+#### pgvector (PostgreSQL)
 
-This system was tested on Red Hat OpenShift 4.16.24 & Red Hat OpenShift AI v2.16.2.  
-Ensure you have access to GPU resources and the required container registries.
+When `postgres.deploy: true`, the chart deploys PostgreSQL with pgvector:
 
-### Clone
+| Component | Description |
+|-----------|-------------|
+| **PostgreSQL** | Database with pgvector extension (image: `pgvector/pgvector:pg16`) |
+| **CloudBeaver** | Web-based database management UI |
+
+When `postgres.enablePgVector: true`, the `remote::pgvector` provider is configured in Llama Stack.
+
+- **Use case**: Teams using PostgreSQL, simpler operational model
+- **Provider ID**: `pgvector`
+
+### MCP Servers
+
+The default configuration includes four MCP servers:
+
+| Server | Description | Repository |
+|--------|-------------|------------|
+| **eligibility-engine** | Evaluates unpaid leave eligibility | [eligibility-engine-mcp-rs](https://github.com/alpha-hack-program/eligibility-engine-mcp-rs) |
+| **compatibility-engine** | Checks compatibility requirements | [compatibility-engine-mcp-rs](https://github.com/alpha-hack-program/compatibility-engine-mcp-rs) |
+| **cluster-insights** | Provides OpenShift cluster information | [cluster-insights-mcp-rs](https://github.com/alpha-hack-program/cluster-insights-mcp-rs) |
+| **finance-engine** | Financial calculations and data | [finance-engine-mcp-rs](https://github.com/alpha-hack-program/finance-engine-mcp-rs) |
+
+All MCP servers use the `streamable-http` transport protocol.
+
+### Embedding Model
+
+The system uses **Sentence Transformers** with the `nomic-ai/nomic-embed-text-v1.5` model:
+
+- **Vector Dimension**: 768
+- **Chunk Size**: 800 tokens
+- **Chunk Overlap**: 400 tokens
+
+### Kubeflow Pipelines (DSPA)
+
+When `pipelines.enabled: true`, the chart deploys:
+
+- **DataSciencePipelinesApplication (DSPA)**: Pipeline orchestration platform
+- **Pipeline Upserter Hook**: Imports RAG pipeline definitions from Git
+- **Pipeline Runner Hook**: Creates pipeline runs for each vector store provider
+
+## Requirements
+
+### Hardware Requirements
+
+**Recommended:**
+- **GPU**: 1x NVIDIA A10G or equivalent
+- **CPU**: 8 cores
+- **Memory**: 24 Gi
+- **Storage**: 20 Gi
+
+**Minimum:**
+- **GPU**: 1x NVIDIA GPU (shared allocation supported)
+- **CPU**: 6 cores
+- **Memory**: 16 Gi
+- **Storage**: 10 Gi
+
+The default configuration uses the quantized Llama 3.1 8B model (`w4a16`) for efficient GPU utilization.
+
+### Software Requirements
+
+- **Red Hat OpenShift**: 4.20+ (tested on 4.20)
+- **Red Hat OpenShift AI**: 3.2+ (tested on 3.2)
+  - Includes the **Llama Stack Operator** which manages `LlamaStackDistribution` Custom Resources
+- **OpenShift Service Mesh**: Required for KServe
+- **OpenShift Serverless**: Required for KServe
+
+#### Llama Stack Operator
+
+The Llama Stack Operator is a component of Red Hat OpenShift AI that simplifies the deployment and management of Llama Stack distributions. It introduces the `LlamaStackDistribution` Custom Resource (CR) which allows you to declaratively configure:
+
+- Llama Stack server configuration
+- Model providers and endpoints
+- Vector database providers (Milvus, pgvector)
+- MCP server integrations
+- Telemetry and monitoring settings
+
+The Helm chart creates a `LlamaStackDistribution` CR that the operator reconciles into a fully configured Llama Stack deployment.
+
+### Minio (Required for Pipelines)
+
+If using Kubeflow Pipelines (`pipelines.enabled: true`), Minio must be installed in the `minio` namespace.
+
+**Verify Minio is available:**
 
 ```bash
-TODO git clone https://github.com/alpha-hack-program/.git && \
-    cd eligibility-mcp-llamastack/
+oc get svc minio -n minio
 ```
 
-### Log in OpenShift
+Expected output:
 
-```bash
-oc login ...
+```
+NAME    TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+minio   ClusterIP   172.30.x.x      <none>        9000/TCP   1d
 ```
 
-### Make sure that at least a GPU enabled worked has this label:
+**Default Minio Configuration:**
+- **Service**: `minio.minio.svc`
+- **Port**: `9000`
+- **Access Key**: `minio`
+- **Secret Key**: `minio123`
+- **Bucket**: `pipelines`
+
+### Node Labels
+
+At least one GPU-enabled worker node must have this label:
 
 ```yaml
 group: llama-stack-demo
 ```
 
-### Create the project
+## Installation
+
+### Clone the Repository
+
+```bash
+git clone https://github.com/alpha-hack-program/llama-stack-demo.git
+cd llama-stack-demo
+```
+
+### Log in to OpenShift
+
+```bash
+oc login --server=<your-cluster-api> --token=<your-token>
+```
+
+### Create the Project
 
 ```bash
 PROJECT="llama-stack-demo"
-
 oc new-project ${PROJECT}
-``` 
+```
 
-Label project with
-- modelmesh-enabled: 'false'
-- opendatahub.io/dashboard: 'true'
+Label the project for OpenShift AI:
 
 ```bash
 oc label namespace ${PROJECT} modelmesh-enabled=false opendatahub.io/dashboard=true
@@ -144,132 +228,276 @@ oc label namespace ${PROJECT} modelmesh-enabled=false opendatahub.io/dashboard=t
 
 ### Install with Helm
 
-This default delployment deploys one model... TODO.
+**Default deployment (NVIDIA GPU with Llama 3.1 8B):**
+
+```bash
+helm install llama-stack-demo helm/ --namespace ${PROJECT} --timeout 20m
+```
+
+**With secrets file (for remote models with API keys):**
 
 ```bash
 helm install llama-stack-demo helm/ -f helm/values-secrets.yaml --namespace ${PROJECT} --timeout 20m
 ```
 
-If you have access to Intel Gaudi accelerators you could use this command which uses `helm/intel.values` instead:
+**Intel Gaudi deployment:**
 
 ```bash
-helm install llama-stack-demo helm/ -f helm/values-secrets.yaml --namespace ${PROJECT} --values helm/intel.yaml --timeout 20m
+helm install llama-stack-demo helm/ --values helm/intel.yaml --namespace ${PROJECT} --timeout 20m
 ```
 
-If you want an NVIDIA deployment with two models run this. TODO explain which models... bla.
+**NVIDIA deployment with different models:**
 
 ```bash
-helm install llama-stack-demo helm/ -f helm/values-secrets.yaml --namespace ${PROJECT} --values helm/nvidia.yaml --timeout 20m
+helm install llama-stack-demo helm/ --values helm/nvidia.yaml --namespace ${PROJECT} --timeout 20m
 ```
 
-### Wait for pods
+### Wait for Pods
 
 ```bash
 oc -n ${PROJECT} get pods -w
 ```
 
-Expected pods (may take 5-10 minutes to start):
+Expected pods (5-10 minutes to start):
+
 ```
-(Output)
 NAME                                              READY   STATUS    RESTARTS   AGE
-eligibility-lsd-0                                1/1     Running   0          8m
-eligibility-lsd-playground-0                     1/1     Running   0          8m
-eligibility-engine-0                             1/1     Running   0          7m
-loader-0                                         0/1     Completed 0          6m
-llama-3-1-8b-w4a16-predictor-df76b56d6-fw8fp    2/2     Running   0          10m
+llama-stack-demo-0                                1/1     Running   0          8m
+llama-stack-demo-app-xxxxx                        1/1     Running   0          8m
+llama-stack-demo-api-xxxxx                        1/1     Running   0          8m
+eligibility-engine-xxxxx                          1/1     Running   0          7m
+compatibility-engine-xxxxx                        1/1     Running   0          7m
+cluster-insights-xxxxx                            1/1     Running   0          7m
+finance-engine-xxxxx                              1/1     Running   0          7m
+milvus-standalone-xxxxx                           1/1     Running   0          6m
+etcd-deployment-xxxxx                             1/1     Running   0          6m
+attu-xxxxx                                        1/1     Running   0          6m
+pg-lsd-xxxxx                                      1/1     Running   0          6m
+cloudbeaver-xxxxx                                 1/1     Running   0          6m
+llama-3-1-8b-w4a16-predictor-xxxxx               2/2     Running   0          10m
 ```
 
-### Test
+## Configuration
 
-You can access the system in multiple ways:
+### Vector Database Configuration
 
-#### Option 1: OpenShift AI Dashboard
-Get the OpenShift AI Dashboard URL:
+#### Milvus Settings
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `milvus.deploy` | Deploy Milvus infrastructure | `true` |
+| `milvus.enableRemote` | Enable `milvus-remote` provider | `true` |
+| `milvus.host` | Milvus service hostname | `milvus-service` |
+| `milvus.port` | Milvus gRPC port | `19530` |
+| `milvus.storage` | PVC storage size | `20Gi` |
+| `milvus.image` | Milvus image | `milvusdb/milvus:v2.6.0` |
+
+**Examples:**
+
 ```bash
-oc get routes rhods-dashboard -n redhat-ods-applications
+# Deploy Milvus with remote provider
+helm install llama-stack-demo helm/ \
+  --set milvus.deploy=true \
+  --set milvus.enableRemote=true \
+  --namespace ${PROJECT}
+
+# Use only inline Milvus (no deployment)
+helm install llama-stack-demo helm/ \
+  --set milvus.deploy=false \
+  --set milvus.enableRemote=false \
+  --namespace ${PROJECT}
+
+# Connect to external Milvus
+helm install llama-stack-demo helm/ \
+  --set milvus.deploy=false \
+  --set milvus.enableRemote=true \
+  --set milvus.host=external-milvus.example.com \
+  --set milvus.token=your-token \
+  --namespace ${PROJECT}
 ```
 
-Navigate to Data Science Projects -> llama-stack-demo. You'll see the deployed models and workbenches.
+#### PostgreSQL/pgvector Settings
 
-#### Option 2: Direct Access to Llama Stack Playground
-Get the Llama Stack Playground URL:
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `postgres.deploy` | Deploy PostgreSQL with pgvector | `true` |
+| `postgres.enablePgVector` | Enable `pgvector` provider | `true` |
+| `postgres.host` | PostgreSQL hostname | `pg-lsd-service` |
+| `postgres.port` | PostgreSQL port | `5432` |
+| `postgres.user` | Database username | `llamastack` |
+| `postgres.password` | Database password | `llamastack` |
+| `postgres.db` | Database name | `llamastack` |
+
+**Examples:**
+
 ```bash
-oc get routes eligibility-lsd-playground -n ${PROJECT}
+# Deploy PostgreSQL with pgvector
+helm install llama-stack-demo helm/ \
+  --set postgres.deploy=true \
+  --set postgres.enablePgVector=true \
+  --namespace ${PROJECT}
+
+# Disable PostgreSQL entirely
+helm install llama-stack-demo helm/ \
+  --set postgres.deploy=false \
+  --set postgres.enablePgVector=false \
+  --namespace ${PROJECT}
+
+# Connect to external PostgreSQL
+helm install llama-stack-demo helm/ \
+  --set postgres.deploy=false \
+  --set postgres.enablePgVector=true \
+  --set postgres.host=external-postgres.example.com \
+  --set postgres.user=myuser \
+  --set postgres.password=mypassword \
+  --namespace ${PROJECT}
 ```
 
-Access the playground directly to interact with the eligibility assessment system.
+### Kubeflow Pipelines Configuration
 
-#### Option 3: API Access
-For programmatic access, get the Llama Stack API endpoint:
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `pipelines.enabled` | Enable DSPA deployment | `true` |
+| `pipelines.connection.host` | Minio host | `minio.minio.svc` |
+| `pipelines.connection.port` | Minio port | `9000` |
+| `pipelines.connection.awsS3Bucket` | S3 bucket | `pipelines` |
+| `pipelines.runner.vectorStoreProviderIds` | Vector stores to populate | `milvus, milvus-remote, pgvector` |
+| `pipelines.healthCheck.maxRetries` | Max health check attempts | `30` |
+| `pipelines.healthCheck.delay` | Delay between retries (seconds) | `10` |
+
+**Examples:**
+
 ```bash
-oc get routes eligibility-lsd -n ${PROJECT}
+# Enable pipelines for all vector stores
+helm install llama-stack-demo helm/ \
+  --set pipelines.enabled=true \
+  --set pipelines.runner.vectorStoreProviderIds="milvus,milvus-remote,pgvector" \
+  --namespace ${PROJECT}
+
+# Disable pipelines
+helm install llama-stack-demo helm/ \
+  --set pipelines.enabled=false \
+  --namespace ${PROJECT}
+
+# Run pipelines only for pgvector
+helm install llama-stack-demo helm/ \
+  --set pipelines.enabled=true \
+  --set pipelines.runner.vectorStoreProviderIds="pgvector" \
+  --namespace ${PROJECT}
 ```
 
-Use this endpoint to integrate the eligibility assessment capabilities into your applications.
+#### Pipeline Hooks
+
+When `pipelines.enabled: true`, these Helm hooks execute during `post-install` and `post-upgrade`:
+
+1. **Pipeline Upserter Hook** (weight: 4)
+   - Clones pipeline definitions from Git repository
+   - Compiles and uploads pipelines to DSPA
+   - Uses `uv` package manager for dependencies
+
+2. **Pipeline Runner Hook** (weight: 5)
+   - Creates a pipeline run for each vector store provider in `vectorStoreProviderIds`
+   - Ingests documents from the configured Git repository
+   - Configurable parameters: `gitRepo`, `gitContext`, `filenames`, `vectorStoreName`, `embeddingModel`, `chunkSizeInTokens`, `chunkOverlapInTokens`
+
+## Usage
+
+### Access the System
+
+#### Streamlit Application
+
+```bash
+oc get route ${PROJECT}-app -n ${PROJECT} -o jsonpath='{.spec.host}'
+```
+
+Open the URL in your browser for the interactive eligibility assessment interface.
+
+#### REST API
+
+```bash
+oc get route ${PROJECT}-api -n ${PROJECT} -o jsonpath='{.spec.host}'
+```
+
+Use this endpoint for programmatic access.
+
+#### Llama Stack API
+
+```bash
+oc get route ${PROJECT}-route -n ${PROJECT} -o jsonpath='{.spec.host}'
+```
+
+Direct access to the Llama Stack API.
+
+#### OpenShift AI Dashboard
+
+```bash
+oc get route rhods-dashboard -n redhat-ods-applications -o jsonpath='{.spec.host}'
+```
+
+Navigate to **Data Science Projects** → **llama-stack-demo** to see deployed models and workbenches.
+
+#### Database UIs
+
+- **Attu (Milvus)**: `oc get route attu -n ${PROJECT} -o jsonpath='{.spec.host}'`
+- **CloudBeaver (PostgreSQL)**: `oc get route cloudbeaver -n ${PROJECT} -o jsonpath='{.spec.host}'`
+
+### Example Queries
+
+- "My mother had an accident and she's at the hospital. I have to take care of her, can I get access to the unpaid leave aid?"
+- "I have just adopted two children, at the same time, aged 3 and 5, am I eligible for the unpaid leave aid? How much?"
+- "I'm a single mom and I just had a baby, may I get access to the unpaid leave aid?"
+- "Enumerate the legal requirements to get the aid for unpaid leave."
+
+### Example System Prompt
+
+```
+You are a helpful AI assistant that uses tools to help citizens of the Republic of Lysmark. Answers should be concise and human readable. AVOID references to tools or function calling nor show any JSON. Infer parameters for function calls or instead use default values or request the needed information from the user. Call the RAG tool first if unsure. Parameter single_parent_family only is necessary if birth/adoption/foster_care otherwise use false.
+```
 
 ## Business Rules
 
-### Unpaid Leave Evaluation Data
+### Unpaid Leave Evaluation Cases
 
-| Family relationship | Situation | Single-parent family | Number of children | Potentially eligible | Monthly benefit | Case | Description | Output | DESCRIPTION | Rule ID |
-|---------------------|-----------|---------------------|-------------------|---------------------|----------------|------|-------------|--------|-------------|---------|
-| true | delivery, birth | true | | true | 500 | E | Single-parent family with newborn | The single-parent status must be documented | Case E: Single-parent family with any child | regla-005 |
-| true | delivery, birth | | >=3 | true | 500 | B | Third child or more with newborn | The number of children must be 3 or more, the ages of at least 2 of the minors must be less than 6, if there is disability greater than 33% then the limit is 9 years | Case B: Third child or more with newborn | regla-002 |
-| true | delivery, birth | | | false | 0 | B | The number of children must be 3 or more, must consult with administration | | The number of children must be 3 or more, must consult with administration | 9ec43eb2-484f-4fcf-9dd7-6510da30850c |
-| true | illness, accident | | | true | 725 | A | First-degree family care sick or accident victim | The person must have been hospitalized and the care of the person must be continued | Case A: First-degree family care sick/injured | regla-001 |
-| true | adoption, foster_care | | | true | 500 | C | Adoption or foster care | In the foster care case the duration must be longer than one year | Case C: Adoption or foster care | regla-003 |
-| true | multiple_birth, multiple_delivery, multiple_adoption, multiple_foster_care | | | true | 500 | D | Delivery, adoption or foster care multiple | | Case D: Delivery, adoption or foster care multiple | regla-004 |
-| true | | | | false | 0 | NONE | No case applies | | No case applies | 515afd1f-43cc-44ed-971c-fefb273840b2 |
-| false | | | | false | 0 | NONE | Not applicable by relationship (first degree) | | Only father, mother, son, daughter, spouse or partner are accepted | 058dd988-90dd-46da-8478-ee458aacde6f |
-| | | | | false | 0 | NONE | UNKNOWN_ERROR | | | f32bfb0f-801d-4d6c-b5bd-13a1edd0eaca |
+| Case | Situation | Monthly Benefit | Description |
+|------|-----------|-----------------|-------------|
+| **A** | Illness/accident | 725€ | First-degree family care for sick or accident victim |
+| **B** | Third child or more | 500€ | Birth with 3+ children (at least 2 under 6 years) |
+| **C** | Adoption/foster care | 500€ | Adoption or foster care (>1 year duration) |
+| **D** | Multiple birth/adoption | 500€ | Multiple delivery, adoption, or foster care |
+| **E** | Single-parent family | 500€ | Single-parent family with newborn |
+| **NONE** | Not eligible | 0€ | Requirements not met |
 
-### Summary
+### Eligibility Requirements
 
-This table contains the evaluation criteria and outcomes for unpaid leave assistance eligibility. The data shows different cases (A through E) with varying monthly benefits:
-
-- **Case A**: First-degree family care sick/injured - 725€
-- **Case B**: Third child or more with newborn - 500€  
-- **Case C**: Adoption or foster care - 500€
-- **Case D**: Multiple delivery/adoption/foster care - 500€
-- **Case E**: Single-parent family with any child - 500€
-- **NONE**: Cases where no assistance applies - 0€
-
-The table includes input parameters (family relationship, situation, single-parent status, number of children) and corresponding outputs (eligibility, benefit amount, case classification, descriptions, and rule IDs).
-
-## Example queries
-
-- My mother had an accident and she's at the hospital. I have to take care of her, can I get access to the unpaid leave aid?
-- My mother had an accident and she's at the hospital. I have to take care of her, tell me if I can get access to the unpaid leave aid and the requirements I have to meet.
-- I have just adopted two children, at the same time, aged 3 and 5, am I elegible for the unpaid leave aid? How much?
-- I have just adopted two children, at the same time, aged 3 and 5, tell me if I'm elegible for the unpaid leave aid and which requirements I should meet.
-- I'm a single mom and I just had a baby, may I get access to the unpaid leave aid?
-- Enumerate the legal requirements to get the aid for unpaid leave.
-
-## Example System Prompt
-
-You are a helpful AI assistant that uses tools to help citizens of the Republic of Lysmark. Answers should be concise and human readable. AVOID references to tools or function calling nor show any JSON. Infer parameters for function calls or instead use default values or request the needed information from the user. Call the RAG tool first if unsure. Parameter single_parent_family only is necessary if birth/adoption/foster_care otherwise use false.
+- Must have first-degree family relationship (father, mother, son, daughter, spouse, partner)
+- Situation must match one of the covered cases
+- Documentation requirements vary by case
 
 ## Uninstall
 
-Unistall the helm chart.
+### Remove the Helm Release
 
 ```bash
 helm uninstall llama-stack-demo --namespace ${PROJECT}
 ```
 
-Delete all remaining objects like jobs created in hooks.
+### Clean Up Remaining Resources
 
 ```bash
-oc delete jobs -l "app.kubernetes.io/part-of=llama-stack-demo"
+oc delete jobs -l "app.kubernetes.io/part-of=llama-stack-demo" -n ${PROJECT}
 ```
 
-Finally remove the project:
+### Delete the Project
 
 ```bash
 oc delete project ${PROJECT}
 ```
 
-# Monitoring
+## Monitoring
+
+### Enable OpenTelemetry Tracing
+
+The system supports OpenTelemetry tracing when `otelCollector.enabled: true`. Configure your DSCInitialization:
 
 ```yaml
 apiVersion: dscinitialization.opendatahub.io/v2
@@ -277,9 +505,7 @@ kind: DSCInitialization
 metadata:
   name: default-dsci
 spec:
-  applicationsNamespace: redhat-ods-applications
   monitoring:
-    alerting: {}
     managementState: Managed
     metrics:
       replicas: 1
@@ -293,41 +519,15 @@ spec:
         backend: pv
         retention: 2160h0m0s
         size: 100Gi
-  trustedCABundle:
-    customCABundle: ''
-    managementState: Managed
 ```
 
-Just make sure that in your default-dsci spec->monitoring is coherent with:
+### Collector Service (Workaround)
+
+If the collector service is missing, create it:
 
 ```yaml
-spec:
-  ...
-  monitoring:
-    alerting: {}
-    managementState: Managed
-    metrics:
-      replicas: 1
-      storage:
-        retention: 90d
-        size: 50Gi
-    namespace: redhat-ods-monitoring
-    traces:
-      sampleRatio: '1.0'
-      storage:
-        backend: pv
-        retention: 2160h0m0s
-        size: 100Gi
-...
-```
-
-### BUG collector service
-
-Create this service...
-
-```yaml
-kind: Service
 apiVersion: v1
+kind: Service
 metadata:
   name: data-science-collector
   namespace: redhat-ods-monitoring
@@ -336,31 +536,45 @@ metadata:
     app.kubernetes.io/instance: redhat-ods-monitoring.data-science-collector
     app.kubernetes.io/part-of: opentelemetry
 spec:
-  ipFamilies:
-    - IPv4
   ports:
     - name: otlp-grpc
-      protocol: TCP
-      appProtocol: grpc
       port: 4317
       targetPort: 4317
-    - name: otlp-http
       protocol: TCP
-      appProtocol: http
+      appProtocol: grpc
+    - name: otlp-http
       port: 4318
       targetPort: 4318
-    - name: prometheus
       protocol: TCP
+      appProtocol: http
+    - name: prometheus
       port: 8889
       targetPort: 8889
-  internalTrafficPolicy: Cluster
-
-  type: ClusterIP
-  ipFamilyPolicy: SingleStack
-  sessionAffinity: None
+      protocol: TCP
   selector:
     app.kubernetes.io/component: opentelemetry-collector
     app.kubernetes.io/instance: redhat-ods-monitoring.data-science-collector
     app.kubernetes.io/managed-by: opentelemetry-operator
     app.kubernetes.io/part-of: opentelemetry
+  type: ClusterIP
 ```
+
+---
+
+## Development Notes
+
+### Trip Report
+
+The inner to outer development loop:
+1. Decision table design
+2. Code implementation
+3. Unit testing
+4. MCP Inspector validation
+5. Claude Desktop testing
+6. Llama Stack Local with RHOAI models
+7. Llama Stack on RHOAI
+
+Key learnings:
+- Started with TypeScript MCP server, switched to Rust for better performance
+- Simplified logic from full legal document coverage to decision table approach
+- Variable naming (e.g., `is_single_parent_family`, `number_of_children_after`) significantly impacts SLM performance

@@ -77,7 +77,8 @@ spec:
     spec:
       containers:
       - name: postgres
-        image: pgvector/pgvector:pg16
+        image: {{ .Values.postgres.image | default "docker.io/pgvector/pgvector:pg16" | quote }}
+        imagePullPolicy: IfNotPresent
         ports:
         - name: postgres
           containerPort: 5432
@@ -261,7 +262,8 @@ spec:
               mountPath: /config
       containers:
         - name: cloudbeaver
-          image: dbeaver/cloudbeaver:latest
+          image: {{ .Values.postgres.cloudbeaverImage | default "docker.io/dbeaver/cloudbeaver:25.3.4" | quote }}
+          imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 8978

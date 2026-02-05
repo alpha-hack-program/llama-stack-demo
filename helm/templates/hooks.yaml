@@ -779,16 +779,41 @@ spec:
           - |
             set -e
             
-            echo "=== DSPA Health Check ==="
-            echo "Namespace: ${DATA_SCIENCE_PROJECT_NAMESPACE}"
-            
             MAX_RETRIES={{ .Values.pipelines.healthCheck.maxRetries | default 30 }}
             DELAY={{ .Values.pipelines.healthCheck.delay | default 10 }}
             
+            echo "=== Infrastructure Health Checks ==="
+            echo "Namespace: ${DATA_SCIENCE_PROJECT_NAMESPACE}"
             echo "Max retries: ${MAX_RETRIES}"
             echo "Delay between retries: ${DELAY}s"
+            echo ""
             
-            # Get the DSPA route host
+            {{- if .Values.postgres.deploy }}
+            # Wait for PostgreSQL deployment to be ready
+            echo "=== PostgreSQL Health Check ==="
+            echo "Waiting for pg-lsd deployment to be ready..."
+            if ! oc rollout status deployment/pg-lsd -n ${DATA_SCIENCE_PROJECT_NAMESPACE} --timeout=300s; then
+              echo "❌ ERROR: PostgreSQL deployment failed to become ready"
+              exit 1
+            fi
+            echo "✓ PostgreSQL is ready!"
+            echo ""
+            {{- end }}
+            
+            {{- if .Values.milvus.deploy }}
+            # Wait for Milvus deployment to be ready
+            echo "=== Milvus Health Check ==="
+            echo "Waiting for milvus-standalone deployment to be ready..."
+            if ! oc rollout status deployment/milvus-standalone -n ${DATA_SCIENCE_PROJECT_NAMESPACE} --timeout=300s; then
+              echo "❌ ERROR: Milvus deployment failed to become ready"
+              exit 1
+            fi
+            echo "✓ Milvus is ready!"
+            echo ""
+            {{- end }}
+            
+            # Wait for DSPA API to be ready
+            echo "=== DSPA Health Check ==="
             for i in $(seq 1 ${MAX_RETRIES}); do
               echo "Attempt ${i}/${MAX_RETRIES}: Getting DSPA route..."
               DSPA_HOST=$(oc get route ds-pipeline-dspa -n ${DATA_SCIENCE_PROJECT_NAMESPACE} -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
@@ -800,6 +825,8 @@ spec:
                 echo "Checking API health at https://${DSPA_HOST}/apis/v1beta1/healthz..."
                 if curl -sk --max-time 10 "https://${DSPA_HOST}/apis/v1beta1/healthz" -o /dev/null -w "%{http_code}" | grep -q "200"; then
                   echo "✓ DSPA API is healthy!"
+                  echo ""
+                  echo "=== All infrastructure components are ready ==="
                   exit 0
                 else
                   echo "API not ready yet, waiting ${DELAY}s..."
@@ -976,6 +1003,16 @@ rules:
 - apiGroups: ["datasciencepipelinesapplications.opendatahub.io"]
   resources: ["datasciencepipelinesapplications/api"]
   verbs: ["get", "create", "update", "delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  resourceNames: ["pg-lsd", "milvus-standalone"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["replicasets"]
+  verbs: ["get", "list", "watch"]
 ---
 # RoleBinding for pipeline runner
 apiVersion: rbac.authorization.k8s.io/v1
