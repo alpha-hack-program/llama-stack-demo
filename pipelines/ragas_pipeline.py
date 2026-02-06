@@ -843,7 +843,7 @@ def pipeline(
     git_repo: str = "alpha-hack-program/llama-stack-demo",
     git_context: str = "materials/datasets",
     git_ref: str = "next",
-    dataset_filename: str = "base_dataset.json",
+    dataset_filename: str = "base_dataset_small.json",
     model_id: str = "llama-3-1-8b-w4a16/llama-3-1-8b-w4a16",
     embedding_model_id: str = "sentence-transformers/nomic-ai/nomic-embed-text-v1.5",
     vector_store_name: str = "",
