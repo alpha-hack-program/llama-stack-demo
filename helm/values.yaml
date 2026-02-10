@@ -20,6 +20,7 @@ ragDefaults:
   chunkSizeInTokens: 800
   chunkOverlapInTokens: 400
   enableRagas: true
+  modelId: llama-4-scout-17b-16e-w4a16/Llama-4-Scout-17B-16E-W4A16
 
 lsdVectorStoreProviderId: milvus
 lsdVectorStoreName: rag-store
@@ -35,6 +36,10 @@ loaderJobRetries: 60
 
 milvusDbPath: /tmp/milvus.db
 fmsOchestratorUrl: http://localhost:8080
+
+# Deploy Playground
+playground:
+  enabled: false
 
 # Pipelines configuration
 pipelines:
@@ -97,7 +102,7 @@ pipelines:
     intervalMinutes: 60
     params:
       gitRepo: alpha-hack-program/llama-stack-demo
-      gitContext: client/docs_pdf
+      gitContext: materials/datasets
       gitRef: next
       base_dataset_filename: base_dataset_small.json
       tools: "all"
@@ -115,7 +120,6 @@ pipelines:
       vectorStoreName: rag-store
       vectorStoreProviderId: "milvus, milvus-remote, pgvector"
     
-
 # PostgreSQL configuration
 postgres:
   # Deploy PostgreSQL infrastructure

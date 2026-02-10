@@ -211,7 +211,7 @@ def pipeline(
     git_ref: str = "next",
     filenames: str = "2025_61-FR_INT.html.pdf",
     vector_store_name: str = "rag-store",
-    vector_store_provider_id: str = "milvus",
+    vector_store_provider_id: str = "milvus", # milvus, milvus-remote, pgvector
     embedding_model: str = "sentence-transformers/nomic-ai/nomic-embed-text-v1.5",
     embedding_dimension: int = 768,
     ranker: str = "default",
