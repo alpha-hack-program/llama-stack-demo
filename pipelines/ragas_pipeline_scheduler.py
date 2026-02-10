@@ -49,6 +49,8 @@ from shared.kubeflow import (
     get_pipeline_id_by_name,
     get_or_create_experiment,
     get_latest_pipeline_version_id,
+    list_recurring_runs_for_experiment,
+    delete_recurring_run,
     create_recurring_run,
 )
 
@@ -200,6 +202,11 @@ def parse_args():
         default=os.environ.get("RAGAS_SCHEDULER_VECTOR_STORE_NAME", "rag-store"),
         help="Base name for vector stores (provider ID will be appended)",
     )
+    parser.add_argument(
+        "--model-id",
+        default=os.environ.get("RAGAS_SCHEDULER_MODEL_ID", "llama-3-1-8b-w4a16/llama-3-1-8b-w4a16"),
+        help="LLM model ID for RAGAS (e.g. from ragDefaults.modelId)",
+    )
 
     return parser.parse_args()
 
@@ -286,6 +293,20 @@ def main():
 
     print(f"\nWill create {len(schedule_specs)} recurring run(s): {schedule_specs}")
 
+    # KFP has no update for recurring runs; delete any existing ones we're about to recreate
+    job_names_to_create = {f"ragas-{p}-{m}" for p, m in schedule_specs}
+    existing = list_recurring_runs_for_experiment(client, experiment_id)
+    for run in existing:
+        display_name = getattr(run, "display_name", None) or getattr(run, "job_name", None)
+        if display_name and display_name in job_names_to_create:
+            rid = getattr(run, "recurring_run_id", None)
+            if rid:
+                print(f"Deleting existing recurring run: {display_name} ({rid})")
+                try:
+                    delete_recurring_run(client, rid)
+                except Exception as e:
+                    print(f"  ⚠ Failed to delete {display_name}: {e}")
+
     created = []
     for provider, retrieval_mode in schedule_specs:
         vector_store_name = f"{args.vector_store_name}-{provider}"
@@ -296,6 +317,7 @@ def main():
             "git_context": args.git_context,
             "git_ref": args.git_ref,
             "base_dataset_filename": args.base_dataset_filename,
+            "model_id": args.model_id,
             "vector_store_name": vector_store_name,
             "tools": args.tools,
             "instructions": args.instructions,

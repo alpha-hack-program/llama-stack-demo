@@ -2,7 +2,7 @@ import os
 import time
 import sys
 
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 
 from kubernetes import client as k8s_cli, config as k8s_conf
@@ -98,6 +98,27 @@ def get_or_create_experiment(client: kfp_cli.Client, experiment_name: str) -> st
     except Exception:
         print(f"Experiment '{experiment_name}' not found, creating new one...")
         return create_experiment(client, experiment_name)
+
+# Functions for listing and deleting recurring runs (no update API exists; delete then create to "update")
+def list_recurring_runs_for_experiment(
+    client: kfp_cli.Client,
+    experiment_id: str,
+    page_size: int = 100,
+) -> List:
+    """List recurring runs for an experiment. Returns list of run objects with display_name and recurring_run_id."""
+    result = client.list_recurring_runs(
+        experiment_id=experiment_id,
+        page_size=page_size,
+    )
+    # API may use recurring_runs or jobs
+    runs = getattr(result, "recurring_runs", None) or getattr(result, "jobs", None) or []
+    return list(runs)
+
+
+def delete_recurring_run(client: kfp_cli.Client, recurring_run_id: str) -> None:
+    """Delete a recurring run by ID."""
+    client.delete_recurring_run(recurring_run_id=recurring_run_id)
+
 
 # Function that creates a recurring (scheduled) run of a pipeline in a given experiment
 def create_recurring_run(
