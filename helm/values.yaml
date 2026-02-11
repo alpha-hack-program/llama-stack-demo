@@ -30,6 +30,14 @@ lsdScoreThreshold: 0.7
 lsdMaxNumResults: 10
 lsdTestQuery: Tell me about taxes in Lysmark.
 
+lsdResources:
+  limits:
+    cpu: 1
+    memory: 8Gi
+  requests:
+    cpu: 1
+    memory: 8Gi
+
 llamaStackDemoCoreImage: quay.io/atarazana/llama-stack-demo-core:0.5.3
 
 loaderDelay: 15
@@ -229,7 +237,7 @@ mcpServers:
       uri: https://github.com/alpha-hack-program/eligibility-engine-mcp-rs.git
       ref: main
       path: .
-    # image: quay.io/atarazana/eligibility-engine-mcp-rs:1.2.1
+    image: quay.io/atarazana/eligibility-engine-mcp-rs:2.0.2
     mcp_transport: "streamable-http"
     protocol: "http"
     host: eligibility-engine
