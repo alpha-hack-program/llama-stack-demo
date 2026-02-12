@@ -346,6 +346,83 @@ def generate_ragas_dataset(
     import httpx
     from llama_stack_client import LlamaStackClient
 
+    def _serialize_for_json(val: Any) -> Any:
+        """Convert a value to something JSON-serializable."""
+        if val is None or isinstance(val, (bool, int, float, str)):
+            return val
+        if isinstance(val, (dict, list)):
+            return val
+        if hasattr(val, "__dict__"):
+            return {k: _serialize_for_json(v) for k, v in val.__dict__.items()}
+        return str(val)
+
+    def _extract_tool_calls(response: Any) -> List[Dict[str, Any]]:
+        """Extract tool calls from Llama Stack response (output list, then turns or tool_calls). Returns list of {tool_name, arguments, response}."""
+        out: List[Dict[str, Any]] = []
+        if hasattr(response, "output") and isinstance(response.output, list):
+            for item in response.output:
+                type_ = getattr(item, "type", None)
+                if type_ == "file_search_call":
+                    queries = getattr(item, "queries", None) or []
+                    results = getattr(item, "results", None) or []
+                    result_texts = [getattr(r, "text", "") or "" for r in results]
+                    out.append({
+                        "tool_name": "file_search",
+                        "arguments": {"queries": list(queries)},
+                        "response": result_texts,
+                    })
+                elif type_ and "mcp" in str(type_).lower() and type_ != "mcp_list_tools":
+                    name = getattr(item, "tool_name", None) or getattr(item, "name", None) or getattr(item, "server_label", None) or "mcp"
+                    args = getattr(item, "arguments", None) or getattr(item, "args", None) or {}
+                    # Llama Stack MCP call uses "output" for the tool result (not "response" or "result")
+                    resp = getattr(item, "output", None) or getattr(item, "response", None) or getattr(item, "result", None)
+                    if not isinstance(args, dict):
+                        try:
+                            args = json.loads(args) if isinstance(args, str) else {}
+                        except Exception:
+                            args = {} if args is None else {"raw": str(args)}
+                    out.append({"tool_name": str(name), "arguments": args, "response": _serialize_for_json(resp)})
+            if out:
+                return out
+        if hasattr(response, "turns") and response.turns:
+            for turn in response.turns:
+                if hasattr(turn, "tool_calls") and turn.tool_calls:
+                    for tc in turn.tool_calls:
+                        name = getattr(tc, "tool_name", None) or (tc.__dict__.get("tool_name") if hasattr(tc, "__dict__") else "unknown")
+                        args = getattr(tc, "arguments", None) or (tc.__dict__.get("arguments") if hasattr(tc, "__dict__") else {})
+                        resp = getattr(tc, "response", None) or (tc.__dict__.get("response") if hasattr(tc, "__dict__") else None)
+                        if isinstance(args, dict):
+                            pass
+                        else:
+                            try:
+                                args = json.loads(args) if isinstance(args, str) else (args or {})
+                            except Exception:
+                                args = {} if args is None else {"raw": str(args)}
+                        out.append({"tool_name": name, "arguments": args, "response": _serialize_for_json(resp)})
+                if hasattr(turn, "steps") and turn.steps:
+                    for step in turn.steps:
+                        name = getattr(step, "tool_name", None) or (getattr(step, "__dict__", {}).get("tool_name") or "unknown")
+                        args = getattr(step, "tool_args", None) or (getattr(step, "__dict__", {}).get("tool_args") or {})
+                        resp = getattr(step, "tool_response", None) or (getattr(step, "__dict__", {}).get("tool_response"))
+                        if not isinstance(args, dict):
+                            try:
+                                args = json.loads(args) if isinstance(args, str) else {}
+                            except Exception:
+                                args = {} if args is None else {"raw": str(args)}
+                        out.append({"tool_name": name, "arguments": args, "response": _serialize_for_json(resp)})
+        elif hasattr(response, "tool_calls") and response.tool_calls:
+            for tc in response.tool_calls:
+                d = tc.__dict__ if hasattr(tc, "__dict__") else {}
+                name = d.get("tool_name", "unknown")
+                args = d.get("arguments", {})
+                if not isinstance(args, dict):
+                    try:
+                        args = json.loads(args) if isinstance(args, str) else {}
+                    except Exception:
+                        args = {} if args is None else {"raw": str(args)}
+                out.append({"tool_name": name, "arguments": args, "response": _serialize_for_json(d.get("response"))})
+        return out
+
     llama_stack_host = os.environ.get("LLAMA_STACK_HOST")
     llama_stack_port = os.environ.get("LLAMA_STACK_PORT")
     llama_stack_secure = os.environ.get("LLAMA_STACK_SECURE", "").lower() in ("true", "1", "yes")
@@ -448,6 +525,7 @@ def generate_ragas_dataset(
                             if hasattr(result, "text") and result.text:
                                 contexts.append(result.text)
 
+            tool_calls = _extract_tool_calls(response)
             ragas_entry = {
                 "id": question_id,
                 "question": question,
@@ -455,11 +533,17 @@ def generate_ragas_dataset(
                 "contexts": contexts if contexts else ["No context retrieved"],
                 "ground_truth": ground_truth,
             }
+            if tool_calls:
+                ragas_entry["tool_calls"] = tool_calls
+            print(f"  [OK] Answer generated ({len(contexts)} contexts, {len(tool_calls)} tool call(s))")
             if "difficulty" in item:
                 ragas_entry["difficulty"] = item["difficulty"]
+            if item.get("expected_tool"):
+                ragas_entry["expected_tool"] = item["expected_tool"]
+            if item.get("expected_tool_parameters"):
+                ragas_entry["expected_tool_parameters"] = item["expected_tool_parameters"]
 
             ragas_dataset.append(ragas_entry)
-            print(f"  [OK] Answer generated ({len(contexts)} contexts retrieved)")
 
         except Exception as e:
             error_count += 1
@@ -585,15 +669,18 @@ def run_ragas_evaluation(
             skipped_count += 1
             print(f"   [SKIP] Skipping error entry: {entry.get('id', 'unknown')}")
             continue
-        if not entry.get("contexts") or entry["contexts"] == ["No context retrieved"]:
-            skipped_count += 1
-            print(f"   [SKIP] Skipping entry with no contexts: {entry.get('id', 'unknown')}")
-            continue
+        # Include entries with no contexts (e.g. tool-only answers): use empty list.
+        # Context metrics (context_precision, context_recall) may be 0 for those rows.
+        raw_contexts = entry.get("contexts") or []
+        if raw_contexts == ["No context retrieved"]:
+            raw_contexts = []
+        if not raw_contexts:
+            print(f"   [INFO] Entry with no retrieved contexts (tool-only?): {entry.get('id', 'unknown')}")
 
         ragas_entry = {
             "user_input": entry["question"],
             "response": entry["answer"],
-            "retrieved_contexts": entry["contexts"],
+            "retrieved_contexts": raw_contexts,
         }
         if "ground_truth" in entry and entry["ground_truth"]:
             ragas_entry["reference"] = entry["ground_truth"]
@@ -606,7 +693,7 @@ def run_ragas_evaluation(
     if len(ragas_data) == 0:
         raise ValueError(
             f"No valid entries for RAGAS evaluation. "
-            f"All {len(ragas_dataset)} entries were invalid (errors or missing contexts)."
+            f"All {len(ragas_dataset)} entries were invalid (errors)."
         )
 
     provider_id = "trustyai_ragas_inline" if mode == "inline" else "trustyai_ragas_remote"
