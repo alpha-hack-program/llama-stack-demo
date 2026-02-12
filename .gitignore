@@ -24,6 +24,7 @@ __pycache__/
 temp.*
 *.orig
 *.next
+*.out
 
 # Helm secrets
 helm/values-secrets.yaml
