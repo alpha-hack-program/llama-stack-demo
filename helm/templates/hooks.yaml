@@ -1051,9 +1051,9 @@ spec:
         - name: RAGAS_SCHEDULER_FILE_SEARCH_MAX_CHUNKS
           value: {{ .Values.pipelines.scheduler.params.file_search_max_chunks | default 5 | toString | quote }}
         - name: RAGAS_SCHEDULER_FILE_SEARCH_SCORE_THRESHOLD
-          value: {{ .Values.pipelines.scheduler.params.file_search_score_threshold | default "0.7" | quote }}
+          value: {{ .Values.pipelines.scheduler.params.file_search_score_threshold | toString | default "0.7" | quote }}
         - name: RAGAS_SCHEDULER_FILE_SEARCH_MAX_TOKENS_PER_CHUNK
-          value: {{ .Values.pipelines.scheduler.params.file_search_max_tokens_per_chunk | default 512 | toString | quote }}
+          value: {{ .Values.pipelines.scheduler.params.file_search_max_tokens_per_chunk | toString | default "512" | quote }}
         - name: RAGAS_SCHEDULER_METRICS
           value: {{ .Values.pipelines.scheduler.params.metrics | default "answer_relevancy,faithfulness,context_precision,context_recall" | quote }}
         - name: RAGAS_SCHEDULER_MODE
