@@ -596,28 +596,76 @@ def generate_ragas_dataset(
     print(f"[OK] Written RAGAS dataset to artifact: {ragas_dataset_output.path}")
 
 
-def _run_ragas_evaluation_direct_impl(
-    ragas_dataset,
-    metrics_list,
-    model_id,
-    embedding_model_id,
-    batch_size=None,
-    show_progress=True,
+@dsl.component(
+    base_image=PYTORCH_IMAGE,
+    packages_to_install=[
+        "llama-stack-client==0.3.5",
+        "httpx",
+        "ragas",
+        "langchain-openai",
+    ],
+)
+def run_ragas_evaluation(
+    ragas_dataset_input: Input[Dataset],
+    model_id: str,
+    embedding_model_id: str,
+    metrics: str,
+    evaluation_output_metrics: Output[Metrics],
+    evaluation_results_output: Output[Dataset],
+    batch_size: int = 0,
+    show_progress: bool = True,
+    timeout: int = 600,
 ):
     """
-    Same logic as run_ragas_evaluation_direct in ragas_dataset_eval_direct.py.
-    Uses RAGAS library directly with Llama Stack LLM and embeddings.
-    """
-    import math
-    from datetime import datetime
-    from typing import Any, Dict, List
+    Run RAGAS evaluation on the generated dataset using the RAGAS library directly.
 
+    Same evaluation logic as run_ragas_evaluation_direct in ragas_dataset_eval_direct.py:
+    converts dataset with _context_from_json_like, uses RAGAS evaluate() with Llama Stack
+    LLM (ChatOpenAI at /v1) and Llama Stack embeddings.
+
+    Args:
+        ragas_dataset_input: Input artifact containing the RAGAS dataset JSON
+        model_id: LLM model identifier for scoring (judge)
+        embedding_model_id: Embedding model identifier
+        metrics: Comma-separated list of RAGAS metrics to compute
+        evaluation_output_metrics: Kubeflow Metrics output for logging RAGAS metrics
+        evaluation_results_output: Output artifact for the evaluation results JSON
+        batch_size: RAGAS evaluate() batch size (0 = None, no batching)
+        show_progress: Whether to show progress bar during evaluation
+        timeout: Timeout in seconds for Llama Stack client
+    """
+    import json
+    import math
+    import os
+    from datetime import datetime
+
+    llama_stack_host = os.environ.get("LLAMA_STACK_HOST")
+    llama_stack_port = os.environ.get("LLAMA_STACK_PORT")
+    if not llama_stack_host:
+        raise ValueError("LLAMA_STACK_HOST environment variable must be set")
+    if not llama_stack_port:
+        raise ValueError("LLAMA_STACK_PORT environment variable must be set")
+    print(f"LLAMA_STACK_HOST: {llama_stack_host}")
+    print(f"LLAMA_STACK_PORT: {llama_stack_port}")
+
+    print(f"\n[LOAD] Loading RAGAS dataset from artifact: {ragas_dataset_input.path}")
+    with open(ragas_dataset_input.path, "r", encoding="utf-8") as f:
+        ragas_dataset_json = f.read()
+    ragas_dataset = json.loads(ragas_dataset_json)
+    print(f"[OK] Loaded {len(ragas_dataset)} entries")
+
+    metrics_list = [m.strip() for m in metrics.split(",") if m.strip()]
+    if not metrics_list:
+        raise ValueError("At least one metric required (metrics parameter).")
+
+    batch_size_arg = None if (batch_size is None or batch_size <= 0) else batch_size
+
+    # --- Inlined run_ragas_evaluation_direct logic (same as ragas_dataset_eval_direct.py) ---
     def _apply_eval_log_level():
-        import logging
-        import os
         name = os.environ.get("RAGAS_EVAL_LOG_LEVEL", "").strip().upper()
         if not name:
             return
+        import logging
         level = getattr(logging, name, None)
         if level is None:
             return
@@ -627,7 +675,6 @@ def _run_ragas_evaluation_direct_impl(
     def _context_from_json_like(raw):
         if raw is None:
             return ""
-        import json
         s = raw if isinstance(raw, str) else json.dumps(raw, ensure_ascii=False)
         s = s.strip()
         if not s:
@@ -675,8 +722,7 @@ def _run_ragas_evaluation_direct_impl(
             ragas_data.append(ragas_entry)
         return ragas_data
 
-    def _get_llama_stack_client(timeout=600):
-        import os
+    def _get_llama_stack_client(timeout_sec=600):
         import httpx
         from llama_stack_client import LlamaStackClient
         host = os.environ.get("LLAMA_STACK_HOST")
@@ -687,13 +733,13 @@ def _run_ragas_evaluation_direct_impl(
         if not port:
             raise ValueError("LLAMA_STACK_PORT must be set when using Llama Stack for evaluation")
         base_url = f"{'https' if secure else 'http'}://{host}:{port}"
-        http_client = httpx.Client(verify=False, timeout=timeout)
+        http_client = httpx.Client(verify=False, timeout=timeout_sec)
         return LlamaStackClient(base_url=base_url, http_client=http_client)
 
     class _LlamaStackEmbeddings:
-        def __init__(self, client, model_id):
+        def __init__(self, client, model_id_emb):
             self._client = client
-            self._model_id = model_id
+            self._model_id = model_id_emb
 
         def embed_documents(self, texts):
             return [self._embed_one(t) for t in texts]
@@ -712,7 +758,6 @@ def _run_ragas_evaluation_direct_impl(
             raise RuntimeError(f"Unexpected embeddings response shape: {type(resp)}")
 
     def _get_chat_openai_for_llama_stack(model_id_inner):
-        import os
         try:
             from langchain_openai import ChatOpenAI
         except ImportError as e:
@@ -734,8 +779,8 @@ def _run_ragas_evaluation_direct_impl(
             temperature=0.0,
         )
 
-    def _get_llama_stack_llm_and_embeddings(model_id_inner, embedding_model_id_inner, timeout=600):
-        client = _get_llama_stack_client(timeout=timeout)
+    def _get_llama_stack_llm_and_embeddings(model_id_inner, embedding_model_id_inner, timeout_sec=600):
+        client = _get_llama_stack_client(timeout_sec=timeout_sec)
         llm = _get_chat_openai_for_llama_stack(model_id_inner)
         embeddings = _LlamaStackEmbeddings(client, embedding_model_id_inner)
         return llm, embeddings
@@ -802,7 +847,7 @@ def _run_ragas_evaluation_direct_impl(
             "When using Llama Stack for RAGAS, both model_id and embedding_model_id are required."
         )
     print(f"[LLAMA-STACK] Using LLM: {model_id} (chat), embeddings: {embedding_model_id}")
-    llm, embeddings = _get_llama_stack_llm_and_embeddings(model_id, embedding_model_id)
+    llm, embeddings = _get_llama_stack_llm_and_embeddings(model_id, embedding_model_id, timeout_sec=timeout)
 
     samples = [SingleTurnSample(**entry) for entry in ragas_data]
     eval_dataset = EvaluationDataset(samples=samples)
@@ -811,7 +856,7 @@ def _run_ragas_evaluation_direct_impl(
     eval_kw = {
         "metrics": metric_objects,
         "show_progress": show_progress,
-        "batch_size": batch_size,
+        "batch_size": batch_size_arg,
     }
     eval_kw["llm"] = llm
     eval_kw["embeddings"] = embeddings
@@ -839,7 +884,7 @@ def _run_ragas_evaluation_direct_impl(
             final_metrics[metric] = float("nan")
 
     base_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    formatted = {
+    results = {
         "benchmark_id": f"ragas_direct_{base_timestamp}",
         "timestamp": datetime.now().isoformat(),
         "metrics": final_metrics,
@@ -856,11 +901,11 @@ def _run_ragas_evaluation_direct_impl(
     print("\n" + "=" * 70)
     print("[RESULTS] RAGAS EVALUATION (direct)")
     print("=" * 70)
-    print(f"Run:      {formatted['benchmark_id']}")
-    print(f"Dataset:  {formatted['dataset_size']} entries ({formatted['valid_entries']} evaluated)")
-    if formatted["metrics"]:
+    print(f"Run:      {results['benchmark_id']}")
+    print(f"Dataset:  {results['dataset_size']} entries ({results['valid_entries']} evaluated)")
+    if results["metrics"]:
         print("\n[METRICS]")
-        for metric, score in formatted["metrics"].items():
+        for metric, score in results["metrics"].items():
             if isinstance(score, float) and math.isnan(score):
                 status, val = "[SKIP]", "N/A"
             else:
@@ -868,84 +913,9 @@ def _run_ragas_evaluation_direct_impl(
                 status = "[PASS]" if score > 0.8 else "[WARN]" if score > 0.6 else "[FAIL]"
             print(f"  {status} {metric:25s}: {val}")
     print("=" * 70)
-    return formatted
-
-
-@dsl.component(
-    base_image=PYTORCH_IMAGE,
-    packages_to_install=[
-        "llama-stack-client==0.3.5",
-        "httpx",
-        "ragas",
-        "langchain-openai",
-    ],
-)
-def run_ragas_evaluation(
-    ragas_dataset_input: Input[Dataset],
-    model_id: str,
-    embedding_model_id: str,
-    metrics: str,
-    evaluation_output_metrics: Output[Metrics],
-    evaluation_results_output: Output[Dataset],
-    batch_size: int = 0,
-    show_progress: bool = True,
-    timeout: int = 600,
-):
-    """
-    Run RAGAS evaluation on the generated dataset using the RAGAS library directly.
-
-    Same evaluation logic as run_ragas_evaluation_direct in ragas_dataset_eval_direct.py:
-    converts dataset with _context_from_json_like, uses RAGAS evaluate() with Llama Stack
-    LLM (ChatOpenAI at /v1) and Llama Stack embeddings.
-
-    Args:
-        ragas_dataset_input: Input artifact containing the RAGAS dataset JSON
-        model_id: LLM model identifier for scoring (judge)
-        embedding_model_id: Embedding model identifier
-        metrics: Comma-separated list of RAGAS metrics to compute
-        evaluation_output_metrics: Kubeflow Metrics output for logging RAGAS metrics
-        evaluation_results_output: Output artifact for the evaluation results JSON
-        batch_size: RAGAS evaluate() batch size (0 = None, no batching)
-        show_progress: Whether to show progress bar during evaluation
-        timeout: Timeout in seconds for Llama Stack client
-    """
-    import json
-    import math
-    import os
-    from datetime import datetime
-
-    llama_stack_host = os.environ.get("LLAMA_STACK_HOST")
-    llama_stack_port = os.environ.get("LLAMA_STACK_PORT")
-    if not llama_stack_host:
-        raise ValueError("LLAMA_STACK_HOST environment variable must be set")
-    if not llama_stack_port:
-        raise ValueError("LLAMA_STACK_PORT environment variable must be set")
-    print(f"LLAMA_STACK_HOST: {llama_stack_host}")
-    print(f"LLAMA_STACK_PORT: {llama_stack_port}")
-
-    print(f"\n[LOAD] Loading RAGAS dataset from artifact: {ragas_dataset_input.path}")
-    with open(ragas_dataset_input.path, "r", encoding="utf-8") as f:
-        ragas_dataset_json = f.read()
-    ragas_dataset = json.loads(ragas_dataset_json)
-    print(f"[OK] Loaded {len(ragas_dataset)} entries")
-
-    metrics_list = [m.strip() for m in metrics.split(",") if m.strip()]
-    if not metrics_list:
-        raise ValueError("At least one metric required (metrics parameter).")
-
-    batch_size_arg = None if (batch_size is None or batch_size <= 0) else batch_size
-
-    results = _run_ragas_evaluation_direct_impl(
-        ragas_dataset=ragas_dataset,
-        metrics_list=metrics_list,
-        model_id=model_id,
-        embedding_model_id=embedding_model_id,
-        batch_size=batch_size_arg,
-        show_progress=show_progress,
-    )
+    # --- End inlined run_ragas_evaluation_direct logic ---
 
     final_metrics = results["metrics"]
-    base_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     print("\n[LOG] Logging metrics to Kubeflow Pipelines...")
     for metric_name, metric_value in final_metrics.items():
