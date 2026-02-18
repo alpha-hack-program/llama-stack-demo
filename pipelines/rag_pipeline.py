@@ -45,6 +45,17 @@ def register_vector_store_and_files(
     import io
     import os
     import requests
+    import mimetypes
+
+    # Ensure .md and other common text formats are recognized (not always in default DB)
+    mimetypes.add_type("text/markdown", ".md")
+    mimetypes.add_type("text/html", ".html")
+    mimetypes.add_type("text/plain", ".txt")
+    mimetypes.add_type("application/pdf", ".pdf")
+    mimetypes.add_type("application/vnd.openxmlformats-officedocument.presentationml.presentation", ".pptx")
+    mimetypes.add_type("application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx")
+    mimetypes.add_type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx")
+
     from typing import List, Optional
     from llama_stack_client import LlamaStackClient
     from llama_stack_client.types.model import Model
@@ -115,8 +126,9 @@ def register_vector_store_and_files(
             print(f"Uploading file: {file_basename} to {client.base_url}")
 
             # Upload file to storage
+            mime_type = mimetypes.guess_type(file_basename)[0] or "text/plain"
             file = client.files.create(
-                file=(file_basename, file_content, "application/pdf"),
+                file=(file_basename, file_content, mime_type),
                 purpose="assistants",
             )
             file_ids.append(file.id)

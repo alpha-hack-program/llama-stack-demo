@@ -215,14 +215,12 @@ oc login --server=<your-cluster-api> --token=<your-token>
 
 ### Create the Project
 
+Create the new project and label it for OpenShift AI:
+
 ```bash
 PROJECT="llama-stack-demo"
+
 oc new-project ${PROJECT}
-```
-
-Label the project for OpenShift AI:
-
-```bash
 oc label namespace ${PROJECT} modelmesh-enabled=false opendatahub.io/dashboard=true
 ```
 
@@ -237,19 +235,7 @@ helm install llama-stack-demo helm/ --namespace ${PROJECT} --timeout 20m
 **With secrets file (for remote models with API keys):**
 
 ```bash
-helm install llama-stack-demo helm/ -f helm/values-secrets.yaml --namespace ${PROJECT} --timeout 20m
-```
-
-**Intel Gaudi deployment:**
-
-```bash
-helm install llama-stack-demo helm/ --values helm/intel.yaml --namespace ${PROJECT} --timeout 20m
-```
-
-**NVIDIA deployment with different models:**
-
-```bash
-helm install llama-stack-demo helm/ --values helm/nvidia.yaml --namespace ${PROJECT} --timeout 20m
+helm install llama-stack-demo helm/ -f helm/values-secrets.yaml --set assigned="${PROJECT}-user1" --namespace ${PROJECT} --timeout 20m
 ```
 
 ### Wait for Pods

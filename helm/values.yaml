@@ -4,6 +4,7 @@ partOf: llama-stack-demo
 
 lsdName: rh-dev
 # lsdImage: registry.redhat.io/rhoai/odh-llama-stack-core-rhel9:v2.23
+# lsdImage: quay.io/opendatahub/llama-stack@sha256:244117b58bdc5261e810547dd6e2e23e658924af3af70b8ad8ce4b5e34b4ac63
 lsdBaseDir: /opt/app-root/src
 lsdPort: 8321
 
@@ -22,6 +23,7 @@ ragDefaults:
   enableRagas: true
   modelId: llama-4-scout-17b-16e-w4a16/Llama-4-Scout-17B-16E-W4A16
   vectorStoreBaseName: rag-store
+  vectorStoreProviderIds: "milvus-remote, pgvector"
 
 lsdVectorStoreProviderId: milvus
 lsdVectorStoreName: rag-store
@@ -29,13 +31,14 @@ lsdRanker: default
 lsdScoreThreshold: 0.7
 lsdMaxNumResults: 10
 lsdTestQuery: Tell me about taxes in Lysmark.
+lsdLogLevel: DEBUG
 
 lsdResources:
   limits:
-    cpu: 1
+    cpu: 2
     memory: 8Gi
   requests:
-    cpu: 1
+    cpu: 2
     memory: 8Gi
 
 llamaStackDemoCoreImage: quay.io/atarazana/llama-stack-demo-core:0.5.3
@@ -89,14 +92,12 @@ pipelines:
   # Pipeline runner configuration
   runner:
     pipelineName: rag-pipeline
-    vectorStoreProviderIds: "milvus, milvus-remote, pgvector"
     experimentName: rag-pipeline-experiment
     params:
       gitRepo: alpha-hack-program/llama-stack-demo
-      gitContext: client/docs_pdf
+      gitContext: client/docs
       gitRef: next
-      filenames: "2025_61-FR_INT.html.pdf, 2025_61-FR.html.pdf, 2025_102_SD.html.pdf, 2025-47-SA-Act.html.pdf, 2025-47-SA-R1.html.pdf"
-      vectorStoreProviderId: "milvus, milvus-remote, pgvector"
+      filenames: "2025_102_SD.md, 2025_61-FR_INT.md, 2025_61-FR.md, 2025_73_JU.md, 2025_88_GD.md, 2025_94_FC.md, 2025-47-SA-Act.md, 2025-47-SA-R1.md, parasol-earnings-report.md"
       ranker: default
       useGpu: false
       # embeddingModel: sentence-transformers/nomic-ai/nomic-embed-text-v1.5 ==> default values in ragDefaults
@@ -105,7 +106,6 @@ pipelines:
       # chunkOverlapInTokens: "400" ==> default values in ragDefaults
   scheduler:
     pipelineName: ragas-pipeline
-    vectorStoreProviderIds: "milvus, milvus-remote, pgvector"
     experimentName: ragas-scoring-experiment
     intervalMinutes: 2 # Interval between runs in minutes
     params:
@@ -168,7 +168,7 @@ milvus:
 docsFolder: /data/docs
 
 otelCollector:
-  enabled: true
+  enabled: false
   endpoint: http://data-science-collector-collector-headless.redhat-ods-monitoring.svc.cluster.local:4318
   protocol: http/protobuf
   tracesEndpoint: http://data-science-collector-collector-headless.redhat-ods-monitoring.svc.cluster.local:4318/v1/traces
@@ -215,10 +215,8 @@ localModels:
       type: nvidia.com/gpu
       max: '1'
       min: '1'
-      nodeSelector:
-        group: 'llama-stack-demo'
-      # productName: NVIDIA-A10G-SHARED
-      # productName: T4-SHARED
+      # nodeSelector:
+      #   group: 'llama-stack-demo'
     env:
       - name: VLLM_SKIP_WARMUP
         value: "true"
@@ -228,6 +226,35 @@ localModels:
       - llama3_json
       - --chat-template
       - /opt/app-root/template/tool_chat_template_llama3.1_json.jinja
+  # - name: jina-embeddings-v3-gpu # Matryoshka model run with vllm
+  #   displayName: Jina Embeddings v3 GPU
+  #   model: jinaai/jina-embeddings-v3
+  #   image: quay.io/atarazana/modelcar-catalog:jina-embeddings-v3
+  #   embeddingsModel: true
+  #   maxModelLen: '8192'
+  #   vectorDimension: 1024
+  #   externalAccess: true
+  #   runtime:
+  #     templateName: vllm-serving-template
+  #     templateDisplayName: vLLM Serving Template
+  #     image: registry.redhat.io/rhaiis/vllm-cuda-rhel9:3.2.1
+  #     resources:
+  #       limits:
+  #         cpu: '2'
+  #         memory: 8Gi
+  #       requests:
+  #         cpu: '1'
+  #         memory: 4Gi
+  #   accelerator:
+  #     type: 'nvidia.com/gpu'
+  #     max: '1'
+  #     min: '1'
+  #     nodeSelector:
+  #       group: 'llama-stack-demo'
+  #       # modelType: 'embeddings'
+  #   env:
+  #     - name: HF_HUB_OFFLINE
+  #       value: '0'
 
 mcpServers:
   - id: eligibility-engine

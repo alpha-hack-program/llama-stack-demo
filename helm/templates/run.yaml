@@ -25,8 +25,8 @@ data:
       - provider_id: {{ .name | replace " " "-" | lower }}
         provider_type: remote::vllm
         config:
-          url: ${env.{{ include "rag-lsd.envVarName" .name }}_URL}
-          model: ${env.{{ include "rag-lsd.envVarName" .name }}_MODEL}
+          url: ${env.{{ include "rag-lsd.envVarName" .name }}_URL:={{ if .url }}{{ .url }}{{ else }}http://{{ .name }}-predictor:8080/v1{{ end }}}
+          model: ${env.{{ include "rag-lsd.envVarName" .name }}_MODEL:={{ .name }}
           {{- if .api_token }}
           api_token: ${env.{{ include "rag-lsd.envVarName" .name }}_API_TOKEN:=fake}
           {{- end }}
@@ -300,4 +300,3 @@ data:
     server:
       port: 8321
     # external_providers_dir: {{ .Values.lsdBaseDir }}/.llama/providers.d
-

@@ -6,6 +6,13 @@ Sanitize name for environment variable usage
 {{- end -}}
 
 {{/*
+Expose .Values.assigned for use in templates. Wrapped in "value" key for fromYaml.
+*/}}
+{{- define "assigned" -}}
+{{- dict "value" (.Values.assigned | default "") | toYaml -}}
+{{- end -}}
+
+{{/*
 Combine localModels and remoteModels into a single list.
 This allows localModels to be in values.yaml (git) and remoteModels in values-secrets.yaml (not in git).
 Wrapped in "items" key because fromYaml doesn't handle root-level lists.

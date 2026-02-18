@@ -879,7 +879,7 @@ spec:
         - name: PIPELINE_NAME
           value: {{ .Values.pipelines.runner.pipelineName | default "rag-pipeline" | quote }}
         - name: VECTOR_STORE_PROVIDER_IDS
-          value: {{ .Values.pipelines.runner.vectorStoreProviderIds | default "milvus, milvus-remote, pgvector" | quote }}
+          value: {{ .Values.ragDefaults.vectorStoreProviderIds | default "milvus, milvus-remote, pgvector" | quote }}
         - name: EXPERIMENT_NAME
           value: {{ .Values.pipelines.runner.experimentName | default "rag-pipeline-experiment" | quote }}
         - name: PIPELINE_GIT_REPO
@@ -1030,7 +1030,7 @@ spec:
         - name: RAGAS_SCHEDULER_EXPERIMENT_NAME
           value: {{ .Values.pipelines.scheduler.experimentName | default "ragas-scoring-experiment" | quote }}
         - name: RAGAS_SCHEDULER_VECTOR_STORE_PROVIDER_IDS
-          value: {{ .Values.pipelines.scheduler.vectorStoreProviderIds | default "milvus, milvus-remote, pgvector" | quote }}
+          value: {{ .Values.ragDefaults.vectorStoreProviderIds | default "milvus, milvus-remote, pgvector" | quote }}
         - name: RAGAS_SCHEDULER_INTERVAL_MINUTES
           value: {{ .Values.pipelines.scheduler.intervalMinutes | default 60 | toString | quote }}
         - name: RAGAS_SCHEDULER_GIT_REPO
