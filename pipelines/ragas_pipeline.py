@@ -464,13 +464,14 @@ def generate_ragas_dataset(
         file_search_tool: Dict[str, Any] = {
             "type": "file_search",
             "vector_store_ids": [vector_store_id],
-            "file_search": {
-                "retrieval_mode": retrieval_mode,
-                "max_chunks": max_chunks_int,
-                "max_num_results": max_chunks_int,  # OpenAI-compatible name; server may use either
-                "score_threshold": file_search_score_threshold,
-                "max_tokens_per_chunk": file_search_max_tokens_per_chunk,
+            "filters": {},
+            "max_num_results": max_chunks_int,
+            "max_chunks": max_chunks_int,
+            "retrieval_mode": retrieval_mode,
+            "max_tokens_per_chunk": file_search_max_tokens_per_chunk,
+            "ranking_options": {
                 "ranker": ranker,
+                "score_threshold": file_search_score_threshold,
             },
         }
         tools_list.append(file_search_tool)

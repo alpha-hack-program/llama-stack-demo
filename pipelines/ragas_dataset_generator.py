@@ -259,6 +259,7 @@ def generate_ragas_dataset(
     vector_store_id: str,
     mcp_tools: List[Dict[str, Any]],
     instructions: str = "",
+    ranker: str = "default",
     retrieval_mode: str = "vector",
     file_search_max_chunks: int = 5,
     file_search_score_threshold: float = 0.7,
@@ -274,13 +275,15 @@ def generate_ragas_dataset(
         tools_list.append({
             "type": "file_search",
             "vector_store_ids": [vector_store_id],
-            "file_search": {
-                "retrieval_mode": retrieval_mode,
-                "max_chunks": file_search_max_chunks,
-                "max_num_results": file_search_max_chunks,  # OpenAI-compatible name; server may use either
-                "score_threshold": file_search_score_threshold,
-                "max_tokens_per_chunk": file_search_max_tokens_per_chunk,
-            },
+            "filters": {},
+            "max_num_results": file_search_max_chunks,
+            "max_chunks": file_search_max_chunks,
+            "retrieval_mode": retrieval_mode,
+            "max_tokens_per_chunk": file_search_max_tokens_per_chunk,
+            "ranking_options": {
+                "ranker": ranker,
+                "score_threshold": file_search_score_threshold
+            }
         })
     tools_list.extend(mcp_tools)
 
