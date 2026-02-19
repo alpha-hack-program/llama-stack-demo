@@ -48,7 +48,7 @@ def discover_mcp_tools(
 
     Args:
         tools: MCP tools filter. Options:
-            - "" (empty): Return empty list (no MCP tools)
+            - "" (empty) or "none": Return empty list (no MCP tools; only file_search will be used)
             - "all": Discover and return all available MCP tools
             - "tool1,tool2": Comma-separated list of specific MCP tool names
               (e.g., "cluster-insights,compatibility-engine")
@@ -62,11 +62,10 @@ def discover_mcp_tools(
     import httpx
     from llama_stack_client import LlamaStackClient
 
-    if not tools or not tools.strip():
-        print("[INFO] No MCP tools requested, returning empty list")
+    tool_filter = (tools or "").strip()
+    if not tool_filter or tool_filter.lower() == "none":
+        print("[INFO] No MCP tools requested (tools=%r), returning empty list" % (tools,))
         return json.dumps([])
-
-    tool_filter = tools.strip()
 
     llama_stack_host = os.environ.get("LLAMA_STACK_HOST")
     llama_stack_port = os.environ.get("LLAMA_STACK_PORT")
@@ -343,10 +342,17 @@ def generate_ragas_dataset(
     """
     import json
     import os
+    import re
     from typing import Any, Dict, List
 
     import httpx
     from llama_stack_client import LlamaStackClient
+
+    def _strip_think_blocks(text: str) -> str:
+        """Remove <think>...</think> blocks from model output so the stored answer is clean."""
+        if not text or not isinstance(text, str):
+            return text
+        return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
     def _serialize_for_json(val: Any) -> Any:
         """Convert a value to something JSON-serializable."""
@@ -520,6 +526,8 @@ def generate_ragas_dataset(
 
             response = client.responses.create(**request_config)
             answer = getattr(response, "output_text", str(response))
+            if isinstance(answer, str):
+                answer = _strip_think_blocks(answer)
 
             contexts = []
             if hasattr(response, "output") and isinstance(response.output, list):
@@ -642,7 +650,13 @@ def run_ragas_evaluation(
     import json
     import math
     import os
+    import re
     from datetime import datetime
+
+    def _strip_think_blocks(text):
+        if not text or not isinstance(text, str):
+            return text
+        return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
     llama_stack_host = os.environ.get("LLAMA_STACK_HOST")
     llama_stack_port = os.environ.get("LLAMA_STACK_PORT")
@@ -708,6 +722,8 @@ def run_ragas_evaluation(
             if entry.get("error"):
                 continue
             answer = entry.get("answer", "")
+            if isinstance(answer, str):
+                answer = _strip_think_blocks(answer)
             if not answer or (isinstance(answer, str) and answer.startswith("ERROR:")):
                 continue
             question = entry.get("question", "")

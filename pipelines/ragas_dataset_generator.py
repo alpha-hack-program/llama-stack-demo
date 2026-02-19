@@ -42,6 +42,7 @@ Requires: LLAMA_STACK_HOST, LLAMA_STACK_PORT (and optionally LLAMA_STACK_SECURE)
 import argparse
 import json
 import os
+import re
 import sys
 from pprint import pprint
 from typing import Any, Dict, List
@@ -91,6 +92,13 @@ def load_base_dataset_from_git(
     if not isinstance(data, list):
         raise ValueError(f"Base dataset must be a JSON array of items; got {type(data)}")
     return data
+
+
+def _strip_think_blocks(text: str) -> str:
+    """Remove <think>...</think> blocks from model output so the stored answer is clean."""
+    if not text or not isinstance(text, str):
+        return text
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
 
 def _serialize_for_json(val: Any) -> Any:
@@ -216,10 +224,10 @@ def resolve_vector_store_id(
 
 
 def discover_mcp_tools(client: LlamaStackClient, tools: str) -> List[Dict[str, Any]]:
-    """Discover MCP tools from Llama Stack. tools: '' (none), 'all', or 'tool1,tool2'."""
-    if not tools or not tools.strip():
+    """Discover MCP tools from Llama Stack. tools: '' or 'none' (no MCP tools), 'all', or 'tool1,tool2'."""
+    tool_filter = (tools or "").strip().lower()
+    if not tool_filter or tool_filter == "none":
         return []
-    tool_filter = tools.strip().lower()
     tool_groups = list(client.toolgroups.list())
     requested = [] if tool_filter == "all" else [t.strip().lower() for t in tools.split(",") if t.strip()]
     mcp_tools = []
@@ -307,6 +315,8 @@ def generate_ragas_dataset(
             print(f"########## Response type: {type(response)}")
 
             answer = getattr(response, "output_text", str(response))
+            if isinstance(answer, str):
+                answer = _strip_think_blocks(answer)
 
             contexts = []
             if hasattr(response, "output") and isinstance(response.output, list):
@@ -416,7 +426,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("-o", "--output", default="ragas_dataset.json", help="Output RAGAS dataset JSON path")
 
     # Optional: MCP tools, instructions, retrieval
-    parser.add_argument("--tools", default="", help="MCP tools: '' (none), 'all', or 'tool1,tool2'")
+    parser.add_argument("--tools", default="", help="MCP tools: '' or 'none' (file_search only), 'all', or 'tool1,tool2'")
     parser.add_argument("--instructions", default="", help="System prompt / instructions for the model")
     parser.add_argument("--timeout", type=int, default=300, help="Request timeout in seconds")
     parser.add_argument("--retrieval-mode", choices=["vector", "text", "hybrid"], default="vector")
@@ -463,7 +473,7 @@ def main() -> int:
     vector_store_id = resolve_vector_store_id(client, args.vector_store_name)
     print(f"[OK] Vector store ID: {vector_store_id}")
 
-    mcp_tools = discover_mcp_tools(client, args.tools) if args.tools else []
+    mcp_tools = discover_mcp_tools(client, args.tools)
     if mcp_tools:
         print(f"[CONFIG] MCP tools: {len(mcp_tools)}")
 

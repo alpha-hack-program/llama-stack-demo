@@ -52,6 +52,7 @@ import json
 import logging
 import math
 import os
+import re
 import sys
 from datetime import datetime
 from typing import Any, Dict, List, Tuple
@@ -109,6 +110,13 @@ def load_ragas_dataset(path: str) -> List[Dict[str, Any]]:
     return data
 
 
+def _strip_think_blocks(text: str) -> str:
+    """Remove <think>...</think> blocks from model output."""
+    if not text or not isinstance(text, str):
+        return text
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
+
 def convert_to_evaluation_format(ragas_dataset: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Convert RAGAS dataset entries to RAGAS SingleTurnSample-compatible format.
@@ -120,6 +128,8 @@ def convert_to_evaluation_format(ragas_dataset: List[Dict[str, Any]]) -> List[Di
         if entry.get("error"):
             continue
         answer = entry.get("answer", "")
+        if isinstance(answer, str):
+            answer = _strip_think_blocks(answer)
         if not answer or (isinstance(answer, str) and answer.startswith("ERROR:")):
             continue
         question = entry.get("question", "")

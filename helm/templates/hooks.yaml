@@ -893,7 +893,7 @@ spec:
         - name: PIPELINE_VECTOR_STORE_BASE_NAME
           value: {{ .Values.ragDefaults.vectorStoreBaseName | default "rag-store" | quote }}
         - name: PIPELINE_EMBEDDING_MODEL
-          value: {{ .Values.ragDefaults.embeddingModel.modelProvider }}/{{ .Values.ragDefaults.embeddingModel.providerModelId | quote }}
+          value: {{ printf "%s/%s" .Values.ragDefaults.embeddingModel.modelProvider .Values.ragDefaults.embeddingModel.providerModelId | quote }}
         - name: PIPELINE_EMBEDDING_DIMENSION
           value: {{ .Values.ragDefaults.embeddingModel.vectorDimension | toString | quote }}
         - name: PIPELINE_RANKER
