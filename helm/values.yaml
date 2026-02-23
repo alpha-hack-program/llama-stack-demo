@@ -320,7 +320,7 @@ mcpServers:
       uri: https://github.com/alpha-hack-program/compatibility-engine-mcp-rs.git
       ref: main
       path: .
-    image: quay.io/atarazana/compatibility-engine-mcp-rs:2.0.2
+    # image: quay.io/atarazana/compatibility-engine-mcp-rs:2.0.2
     mcp_transport: "streamable-http"
     protocol: "http"
     host: compatibility-engine

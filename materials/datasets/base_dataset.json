@@ -2,7 +2,7 @@
   {
     "id": "lysmark_001",
     "question": "What is the tax rate for the first income bracket under the Progressive Income Tax and Surcharge Act?",
-    "ground_truth": "The first bracket applies a 10% tax rate on income up to 10,000.",
+    "ground_truth": "The first bracket applies a 10% tax rate on income up to 10000.",
     "difficulty": "easy"
   },
   {
@@ -13,14 +13,14 @@
   },
   {
     "id": "lysmark_003",
-    "question": "If a taxpayer earns 40,000 in income, what is their total tax liability including any applicable surcharge?",
-    "ground_truth": "For income of 40,000, the base tax is 7,000 (1,000 on the first 10,000 at 10% plus 6,000 on the remaining 30,000 at 20%). Since the base tax exceeds 5,000, a 2% surcharge of 140 applies, making the total tax liability 7,140.",
+    "question": "If a taxpayer earns 43245 in income, what is their total tax liability including any applicable surcharge?",
+    "ground_truth": "For income of 43245, the base tax is 7000 (1000 on the first 10000 at 10% plus 6000 on the remaining 30000 at 20%). Since the base tax exceeds 5000, a 2% surcharge of 140 applies, making the total tax liability 7,140.",
     "difficulty": "medium"
   },
   {
     "id": "lysmark_004",
-    "question": "Under the Commercial Obligations and Liquidated Damages Act, if a contract specifies daily penalties of 100 with a maximum cap of 5,000, and the debtor is 60 days late, what is the capped penalty amount before interest, and does interest accrue on the capped or uncapped amount?",
-    "ground_truth": "The base penalty would be 6,000 (60 days × 100), but the contractual maximum cap of 5,000 applies, so the penalty is capped at 5,000. Interest accrues on the capped penalty amount of 5,000, not on the uncapped 6,000.",
+    "question": "Under the Commercial Obligations and Liquidated Damages Act, if a contract specifies daily penalties of 100 with a maximum cap of 5000, and the debtor is 60 days late, what is the capped penalty amount before interest, and does interest accrue on the capped or uncapped amount?",
+    "ground_truth": "The base penalty would be 6000 (60 days × 100), but the contractual maximum cap of 5000 applies, so the penalty is capped at 5000. Interest accrues on the capped penalty amount of 5000, not on the uncapped 6000.",
     "difficulty": "hard"
   },
   {
@@ -43,8 +43,8 @@
   },
   {
     "id": "lysmark_008",
-    "question": "In a structured finance arrangement with 100,000 available for distribution, 80,000 in senior debt, 40,000 in junior debt, and equity holders, how much does each tier receive according to the Structured Finance and Creditor Priority Act?",
-    "ground_truth": "Senior debt receives 80,000 (fully satisfied). Junior debt receives 20,000 (the remaining cash after senior debt is paid, though they are owed 40,000). Equity receives 0 because junior debt was not fully satisfied.",
+    "question": "In a structured finance arrangement with 100000 available for distribution, 80000 in senior debt, 40000 in junior debt, and equity holders, how much does each tier receive according to the Structured Finance and Creditor Priority Act?",
+    "ground_truth": "Senior debt receives 80000 (fully satisfied). Junior debt receives 20000 (the remaining cash after senior debt is paid, though they are owed 40000). Equity receives 0 because junior debt was not fully satisfied.",
     "difficulty": "hard"
   },
   {
@@ -61,14 +61,14 @@
   },
   {
     "id": "lysmark_011",
-    "question": "If the Area Median Income for a region is 50,000, what is the maximum household income for a family of 5 to be eligible for public housing assistance?",
-    "ground_truth": "For a household of 5 members (more than 4), the adjusted income ceiling is 33,000, calculated as 50,000 × 0.66. The household income must not exceed this amount to be eligible.",
+    "question": "If the Area Median Income for a region is 50000, what is the maximum household income for a family of 5 to be eligible for public housing assistance?",
+    "ground_truth": "For a household of 5 members (more than 4), the adjusted income ceiling is 33000, calculated as 50000 × 0.66. The household income must not exceed this amount to be eligible.",
     "difficulty": "medium"
   },
   {
     "id": "lysmark_012",
-    "question": "Under the Public Housing Assistance Eligibility Act, if a household with 3 members has an income of 29,000 and the AMI is 50,000, but they are already receiving a municipal rental assistance subsidy, are they eligible for assistance under this Act?",
-    "ground_truth": "No, they are not eligible. Although their income of 29,000 is below the ceiling of 30,000 (50,000 × 0.60) for a household of 3, applicants already receiving any other housing subsidy are categorically ineligible under the subsidy exclusivity requirement.",
+    "question": "Under the Public Housing Assistance Eligibility Act, if a household with 3 members has an income of 29000 and the AMI is 50000, but they are already receiving a municipal rental assistance subsidy, are they eligible for assistance under this Act?",
+    "ground_truth": "No, they are not eligible. Although their income of 29000 is below the ceiling of 30000 (50000 × 0.60) for a household of 3, applicants already receiving any other housing subsidy are categorically ineligible under the subsidy exclusivity requirement.",
     "difficulty": "hard"
   },
   {
@@ -98,25 +98,25 @@
   {
     "id": "lysmark_021",
     "question": "What is the surcharge rate applied when total calculated tax exceeds the statutory threshold under the Progressive Income Tax and Surcharge Act?",
-    "ground_truth": "A surcharge of 2% of the total tax liability is applied when the calculated tax exceeds 5,000.",
+    "ground_truth": "A surcharge of 2% of the total tax liability is applied when the calculated tax exceeds 5000.",
     "difficulty": "easy"
   },
   {
     "id": "lysmark_022",
-    "question": "What is the tax rate applied to income exceeding 10,000 under Act No. 2025/61-FR?",
-    "ground_truth": "Income exceeding 10,000 is taxed at 20% in the second bracket.",
+    "question": "What is the tax rate applied to income exceeding 10000 under Act No. 2025/61-FR?",
+    "ground_truth": "Income exceeding 10000 is taxed at 20% in the second bracket.",
     "difficulty": "easy"
   },
   {
     "id": "lysmark_023",
-    "question": "A taxpayer earns 120,000. Calculate their total tax liability including the surcharge according to the Progressive Income Tax and Surcharge Act.",
-    "ground_truth": "Base tax: 1,000 (first 10,000 at 10%) + 22,000 (remaining 110,000 at 20%) = 23,000. Since base tax exceeds 5,000, surcharge applies: 2% × 23,000 = 460. Total tax liability is 23,460.",
+    "question": "A taxpayer earns 120000. Calculate their total tax liability including the surcharge according to the Progressive Income Tax and Surcharge Act.",
+    "ground_truth": "Base tax: 1000 (first 10000 at 10%) + 22000 (remaining 110000 at 20%) = 23000. Since base tax exceeds 5000, surcharge applies: 2% × 23000 = 460. Total tax liability is 23,460.",
     "difficulty": "medium"
   },
   {
     "id": "lysmark_024",
-    "question": "Under the Progressive Income Tax and Surcharge Act, if a taxpayer earns exactly 10,000, what is their total tax liability and why is no surcharge applied?",
-    "ground_truth": "The tax liability is 1,000 (10,000 × 10%). No surcharge is applied because the base tax of 1,000 does not exceed the 5,000 threshold required for the surcharge to apply.",
+    "question": "Under the Progressive Income Tax and Surcharge Act, if a taxpayer earns exactly 10000, what is their total tax liability and why is no surcharge applied?",
+    "ground_truth": "The tax liability is 1000 (10000 × 10%). No surcharge is applied because the base tax of 1000 does not exceed the 5000 threshold required for the surcharge to apply.",
     "difficulty": "hard"
   },
   {
@@ -133,38 +133,32 @@
   },
   {
     "id": "lysmark_027",
-    "question": "If a contract specifies a daily penalty rate of 50 with no maximum cap, and performance is delayed by 30 days, what is the base penalty amount and does interest apply to this amount?",
-    "ground_truth": "The base penalty is 1,500 (30 days × 50). Since there is no cap, this uncapped amount stands. Statutory interest accrues on this penalty amount of 1,500 from the date the penalty becomes due and payable until actual payment.",
-    "difficulty": "medium"
-  },
-  {
-    "id": "lysmark_028",
-    "question": "Under Act No. 2025/73-JU, if a contract has daily penalties of 200, a maximum cap of 10,000, and the obligor is 75 days late, explain the complete calculation methodology including what happens after the cap is reached and how interest is calculated.",
-    "ground_truth": "Step 1: Days of delay = 75. Step 2: Base penalty = 75 × 200 = 15,000. Step 3: Since 15,000 exceeds the contractual maximum of 10,000, the penalty is capped at 10,000. Once the cap is reached (after 50 days), no further penalty accrual occurs despite continued delay. Step 4: Interest accrues on the capped penalty amount of 10,000 (not on the uncapped 15,000). Step 5: Total obligation = 10,000 (capped penalty) + accrued interest on this amount.",
+    "question": "Under Act No. 2025/73-JU, if a contract has daily penalties of 200, a maximum cap of 10000, and the obligor is 75 days late, explain the complete calculation methodology including what happens after the cap is reached and how interest is calculated.",
+    "ground_truth": "Step 1: Days of delay = 75. Step 2: Base penalty = 75 × 200 = 15000. Step 3: Since 15000 exceeds the contractual maximum of 10000, the penalty is capped at 10000. Once the cap is reached (after 50 days), no further penalty accrual occurs despite continued delay. Step 4: Interest accrues on the capped penalty amount of 10000 (not on the uncapped 15000). Step 5: Total obligation = 10000 (capped penalty) + accrued interest on this amount.",
     "difficulty": "hard"
   },
   {
-    "id": "lysmark_029",
+    "id": "lysmark_028",
     "question": "What percentage of votes cast is required to pass an ordinary resolution under the Organizational Voting and Quorum Act?",
     "ground_truth": "Ordinary resolutions require approval by a simple majority, meaning yes votes must exceed 50% of total votes cast.",
     "difficulty": "easy"
   },
   {
-    "id": "lysmark_030",
+    "id": "lysmark_029",
     "question": "What is the minimum turnout percentage that organizations may set in their constitutional documents?",
     "ground_truth": "Organizations may not set turnout requirements below the statutory minimum of 60%, though they may establish higher requirements.",
     "difficulty": "easy"
   },
   {
-    "id": "lysmark_031",
+    "id": "lysmark_030",
     "question": "An organization with 800 eligible voters holds a vote on an ordinary resolution. 500 members participate, with 260 voting yes, 230 voting no, and 10 abstaining. Does the resolution pass?",
     "ground_truth": "Yes, the resolution passes. Turnout is 62.5% (500/800), exceeding the 60% requirement. Yes votes represent 52% of votes cast (260/500), which exceeds the 50% simple majority threshold required for ordinary resolutions.",
     "difficulty": "medium"
   },
   {
     "id": "lysmark_032",
-    "question": "An organization with 1,000 eligible voters conducts a vote to amend its bylaws. 650 voters participate, with 430 voting yes and 220 voting no. Evaluate whether this amendment is validly adopted according to the Organizational Voting and Quorum Act, explaining both required tests.",
-    "ground_truth": "No, the amendment is not validly adopted. Stage 1 (Turnout Test): 65% turnout (650/1,000) satisfies the 60% requirement. Stage 2 (Approval Test): Yes votes represent 66.15% (430/650) of votes cast, which falls short of the required 66.7% threshold for constitutional amendments. Since Stage 2 is not satisfied, the proposal fails.",
+    "question": "An organization with 1000 eligible voters conducts a vote to amend its bylaws. 650 voters participate, with 430 voting yes and 220 voting no. Evaluate whether this amendment is validly adopted according to the Organizational Voting and Quorum Act, explaining both required tests.",
+    "ground_truth": "No, the amendment is not validly adopted. Stage 1 (Turnout Test): 65% turnout (650/1000) satisfies the 60% requirement. Stage 2 (Approval Test): Yes votes represent 66.15% (430/650) of votes cast, which falls short of the required 66.7% threshold for constitutional amendments. Since Stage 2 is not satisfied, the proposal fails.",
     "difficulty": "hard"
   }
 ]

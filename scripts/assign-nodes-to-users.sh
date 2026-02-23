@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Assigns one node per user by labelling nodes of a given instance type.
+# Portable: macOS (Bash 3.x) and Linux (Bash 4+).
 # Nodes are labelled with ${CUSTOM_LABEL}=${CUSTOM_LABEL_PREFIX}-user${i}
 # (default: assigned=llama-stack-demo-user1, etc.)
 #
@@ -27,6 +28,7 @@ fi
 
 NUM_USERS="$1"
 INSTANCE_TYPE="${2:-g5.4xlarge}"
+USERS_WITH_NODES=()
 
 if ! [[ "$NUM_USERS" =~ ^[0-9]+$ ]] || [[ "$NUM_USERS" -lt 1 ]]; then
   echo "Error: number_of_users must be a positive integer." >&2
@@ -38,6 +40,35 @@ fi
 NODES_JSON=$(oc get nodes -l "node.kubernetes.io/instance-type=${INSTANCE_TYPE}" -o json 2>/dev/null) || {
   echo "Error: failed to get nodes (check 'oc' and cluster access)." >&2
   exit 2
+}
+
+# Show existing assignments (nodes that already have CUSTOM_LABEL set)
+# and collect which user numbers already have a node (e.g. llama-stack-demo-user1 -> 1)
+ASSIGNED_ENTRIES=$(echo "$NODES_JSON" | jq -r --arg key "$CUSTOM_LABEL" '
+  .items[] | select(.metadata.labels[$key] != null and .metadata.labels[$key] != "") | "\(.metadata.name) \(.metadata.labels[$key])"
+')
+if [[ -n "$ASSIGNED_ENTRIES" ]]; then
+  echo "Existing assignments (instance type ${INSTANCE_TYPE}):"
+  while IFS= read -r line; do
+    if [[ -n "$line" ]]; then
+      echo "  ${line%% *} is assigned to ${line#* }"
+      # Extract user number from value (e.g. llama-stack-demo-user1 -> 1)
+      val="${line#* }"
+      if [[ "$val" =~ -user([0-9]+)$ ]]; then
+        USERS_WITH_NODES+=("${BASH_REMATCH[1]}")
+      fi
+    fi
+  done <<< "$ASSIGNED_ENTRIES"
+fi
+
+has_node() {
+  local u="$1"
+  local i
+  # Safe for empty array with set -u (bash 3.x / macOS)
+  for i in "${USERS_WITH_NODES[@]+"${USERS_WITH_NODES[@]}"}"; do
+    [[ "$i" == "$u" ]] && return 0
+  done
+  return 1
 }
 
 # Build list of unassigned node names (nodes without CUSTOM_LABEL)
@@ -53,6 +84,11 @@ AVAILABLE="${#UNASSIGNED_NODES[@]}"
 if [[ "$AVAILABLE" -lt "$NUM_USERS" ]]; then
   MISSING=$((NUM_USERS - AVAILABLE))
   echo "Warning: Not enough unassigned nodes. Need ${NUM_USERS}, available ${AVAILABLE}, missing ${MISSING}." >&2
+  for (( u = 1; u <= NUM_USERS; u++ )); do
+    if ! has_node "$u"; then
+      echo "  No node was assigned to user${u}." >&2
+    fi
+  done
 fi
 
 ASSIGNED=0
