@@ -323,6 +323,7 @@ def generate_ragas_dataset(
     file_search_score_threshold: float = 0.7,
     file_search_max_tokens_per_chunk: int = 512,
     ranker: str = "default",
+    force_file_search: bool = False,
 ):
     """
     Generate RAGAS-compatible dataset with RAG answers and contexts.
@@ -343,6 +344,7 @@ def generate_ragas_dataset(
         file_search_score_threshold: Min score for returned results (0–1)
         file_search_max_tokens_per_chunk: Max tokens per chunk in results
         ranker: Ranker to use for scoring retrieved chunks (e.g. "default")
+        force_file_search: If True, pre-fetch RAG chunks and inject as context (no file_search tool)
     """
     import json
     import os
@@ -409,6 +411,7 @@ def generate_ragas_dataset(
         file_search_max_chunks=max_chunks_int,
         file_search_score_threshold=file_search_score_threshold,
         file_search_max_tokens_per_chunk=file_search_max_tokens_per_chunk,
+        force_file_search=force_file_search,
     )
 
     success_count = sum(1 for e in ragas_dataset if not e.get("error"))
@@ -814,6 +817,7 @@ def pipeline(
     file_search_score_threshold: float = 0.7,
     file_search_max_tokens_per_chunk: int = 512,
     ranker: str = "default",
+    force_file_search: bool = False,
     metrics: str = DEFAULT_METRICS,
     mode: str = "inline",
     batch_size: int = 0,
@@ -888,6 +892,7 @@ def pipeline(
         file_search_score_threshold=file_search_score_threshold,
         file_search_max_tokens_per_chunk=file_search_max_tokens_per_chunk,
         ranker=ranker,
+        force_file_search=force_file_search,
     )
     generate_task.after(load_task, resolve_task, discover_task)
     kubernetes.use_config_map_as_env(

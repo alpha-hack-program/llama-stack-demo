@@ -1018,7 +1018,7 @@ spec:
             --model-id "${RAGAS_SCHEDULER_MODEL_ID}" \
             --evaluation-model-id "${RAGAS_SCHEDULER_EVALUATION_MODEL_ID}" \
             --evaluation-embedding-model-id "${RAGAS_SCHEDULER_EVALUATION_EMBEDDING_MODEL_ID}" \
-            --ranker "${RAGAS_SCHEDULER_RANKER}"
+            --ranker "${RAGAS_SCHEDULER_RANKER}" $( [ "${RAGAS_SCHEDULER_FORCE_FILE_SEARCH}" = "true" ] && echo "--force-file-search" )
           echo ""
           echo "=== RAGAS scheduler finished successfully ==="
         env:
@@ -1078,6 +1078,8 @@ spec:
           value: {{ printf "%s/%s" .Values.ragDefaults.embeddingModel.modelProvider .Values.ragDefaults.embeddingModel.providerModelId | quote }}
         - name: RAGAS_SCHEDULER_RANKER
           value: {{ .Values.pipelines.scheduler.params.ranker | default "default" | quote }}
+        - name: RAGAS_SCHEDULER_FORCE_FILE_SEARCH
+          value: {{ .Values.pipelines.scheduler.params.force_file_search | default false | toString | quote }}
         resources:
           limits:
             cpu: '1'

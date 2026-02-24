@@ -166,6 +166,12 @@ def parse_args():
         help="Ranker for retrieval scoring (e.g. default)",
     )
     parser.add_argument(
+        "--force-file-search",
+        action="store_true",
+        default=os.environ.get("RAGAS_SCHEDULER_FORCE_FILE_SEARCH", "").lower() in ("true", "1", "yes"),
+        help="Pre-fetch RAG chunks and inject as context (no file_search tool)",
+    )
+    parser.add_argument(
         "--metrics",
         default=os.environ.get(
             "RAGAS_SCHEDULER_METRICS",
@@ -348,6 +354,7 @@ def main():
             "file_search_score_threshold": args.file_search_score_threshold,
             "file_search_max_tokens_per_chunk": args.file_search_max_tokens_per_chunk,
             "ranker": args.ranker,
+            "force_file_search": args.force_file_search,
             "metrics": args.metrics,
             "mode": args.mode,
             "batch_size": args.batch_size,
