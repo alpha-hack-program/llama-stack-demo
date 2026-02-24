@@ -26,5 +26,17 @@ temp.*
 *.next
 *.out
 
+# egg-info
+*.egg-info
+
+# build
+build/
+dist/
+
+# cache
+.cache/
+.pytest_cache/
+
+
 # Helm secrets
 helm/values-secrets.yaml

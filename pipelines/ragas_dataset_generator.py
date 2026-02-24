@@ -42,13 +42,12 @@ Requires: LLAMA_STACK_HOST, LLAMA_STACK_PORT (and optionally LLAMA_STACK_SECURE)
 import argparse
 import json
 import os
-import re
 import sys
-from pprint import pprint
 from typing import Any, Dict, List
 
 import httpx
 from llama_stack_client import LlamaStackClient
+from portazgo import Agent
 
 
 def get_llama_stack_client(timeout: int = 300) -> LlamaStackClient:
@@ -92,93 +91,6 @@ def load_base_dataset_from_git(
     if not isinstance(data, list):
         raise ValueError(f"Base dataset must be a JSON array of items; got {type(data)}")
     return data
-
-
-def _strip_think_blocks(text: str) -> str:
-    """Remove <think>...</think> blocks from model output so the stored answer is clean."""
-    if not text or not isinstance(text, str):
-        return text
-    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
-
-
-def _serialize_for_json(val: Any) -> Any:
-    """Convert a value to something JSON-serializable (str, dict, list, number, bool, None)."""
-    if val is None or isinstance(val, (bool, int, float, str)):
-        return val
-    if isinstance(val, (dict, list)):
-        return val
-    if hasattr(val, "__dict__"):
-        return {k: _serialize_for_json(v) for k, v in val.__dict__.items()}
-    return str(val)
-
-
-def _extract_tool_calls(response: Any) -> List[Dict[str, Any]]:
-    """Extract tool calls from Llama Stack response (output list, then turns or tool_calls). Returns list of {tool_name, arguments, response}."""
-    out: List[Dict[str, Any]] = []
-
-    # Llama Stack Responses API: response.output is a list (file_search_call, mcp_call, message, mcp_list_tools, etc.)
-    if hasattr(response, "output") and isinstance(response.output, list):
-        for item in response.output:
-            type_ = getattr(item, "type", None)
-            if type_ == "file_search_call":
-                queries = getattr(item, "queries", None) or []
-                results = getattr(item, "results", None) or []
-                result_texts = [getattr(r, "text", "") or "" for r in results]
-                out.append({
-                    "tool_name": "file_search",
-                    "arguments": {"queries": list(queries)},
-                    "response": result_texts,
-                })
-            elif type_ and "mcp" in str(type_).lower() and type_ != "mcp_list_tools":
-                name = getattr(item, "tool_name", None) or getattr(item, "name", None) or getattr(item, "server_label", None) or "mcp"
-                args = getattr(item, "arguments", None) or getattr(item, "args", None) or {}
-                # Llama Stack MCP call uses "output" for the tool result (not "response" or "result")
-                resp = getattr(item, "output", None) or getattr(item, "response", None) or getattr(item, "result", None)
-                if not isinstance(args, dict):
-                    try:
-                        args = json.loads(args) if isinstance(args, str) else {}
-                    except Exception:
-                        args = {} if args is None else {"raw": str(args)}
-                out.append({"tool_name": str(name), "arguments": args, "response": _serialize_for_json(resp)})
-        if out:
-            return out
-
-    if hasattr(response, "turns") and response.turns:
-        for turn in response.turns:
-            if hasattr(turn, "tool_calls") and turn.tool_calls:
-                for tc in turn.tool_calls:
-                    name = getattr(tc, "tool_name", None) or (tc.__dict__.get("tool_name") if hasattr(tc, "__dict__") else "unknown")
-                    args = getattr(tc, "arguments", None) or (tc.__dict__.get("arguments") if hasattr(tc, "__dict__") else {})
-                    resp = getattr(tc, "response", None) or (tc.__dict__.get("response") if hasattr(tc, "__dict__") else None)
-                    if not isinstance(args, dict):
-                        try:
-                            args = json.loads(args) if isinstance(args, str) else (args or {})
-                        except Exception:
-                            args = {} if args is None else {"raw": str(args)}
-                    out.append({"tool_name": name, "arguments": args, "response": _serialize_for_json(resp)})
-            if hasattr(turn, "steps") and turn.steps:
-                for step in turn.steps:
-                    name = getattr(step, "tool_name", None) or (getattr(step, "__dict__", {}).get("tool_name") or "unknown")
-                    args = getattr(step, "tool_args", None) or (getattr(step, "__dict__", {}).get("tool_args") or {})
-                    resp = getattr(step, "tool_response", None) or (getattr(step, "__dict__", {}).get("tool_response"))
-                    if not isinstance(args, dict):
-                        try:
-                            args = json.loads(args) if isinstance(args, str) else {}
-                        except Exception:
-                            args = {} if args is None else {"raw": str(args)}
-                    out.append({"tool_name": name, "arguments": args, "response": _serialize_for_json(resp)})
-    elif hasattr(response, "tool_calls") and response.tool_calls:
-        for tc in response.tool_calls:
-            d = tc.__dict__ if hasattr(tc, "__dict__") else {}
-            name = d.get("tool_name", "unknown")
-            args = d.get("arguments", {})
-            if not isinstance(args, dict):
-                try:
-                    args = json.loads(args) if isinstance(args, str) else {}
-                except Exception:
-                    args = {} if args is None else {"raw": str(args)}
-            out.append({"tool_name": name, "arguments": args, "response": _serialize_for_json(d.get("response"))})
-    return out
 
 
 def _created_at_key(vs: Any) -> tuple:
@@ -259,6 +171,7 @@ def generate_ragas_dataset(
     vector_store_id: str,
     mcp_tools: List[Dict[str, Any]],
     instructions: str = "",
+    force_file_search: bool = False,
     ranker: str = "default",
     retrieval_mode: str = "vector",
     file_search_max_chunks: int = 5,
@@ -266,121 +179,27 @@ def generate_ragas_dataset(
     file_search_max_tokens_per_chunk: int = 512,
 ) -> List[Dict[str, Any]]:
     """
-    Generate RAGAS dataset by querying Llama Stack Responses API for each question.
-    Same logic as generate_ragas_dataset in ragas_pipeline.py.
+    Generate RAGAS dataset by querying the RAG system via portazgo's default Agent
+    (Llama Stack Responses API). Same logical behavior as generate_ragas_dataset in ragas_pipeline.py.
+
+    When force_file_search is True, RAG chunks are pre-fetched and injected as context
+    (no file_search tool).
     """
-    tools_list: List[Dict[str, Any]] = []
-
-    if vector_store_id:
-        tools_list.append({
-            "type": "file_search",
-            "vector_store_ids": [vector_store_id],
-            "filters": {},
-            "max_num_results": file_search_max_chunks,
-            "max_chunks": file_search_max_chunks,
-            "retrieval_mode": retrieval_mode,
-            "max_tokens_per_chunk": file_search_max_tokens_per_chunk,
-            "ranking_options": {
-                "ranker": ranker,
-                "score_threshold": file_search_score_threshold
-            }
-        })
-    tools_list.extend(mcp_tools)
-
-    ragas_dataset = []
-    errors: List[str] = []
-    error_count = 0
-
-    for i, item in enumerate(base_dataset, 1):
-        question_id = item.get("id", f"q_{i}")
-        question = item["question"]
-        ground_truth = item.get("ground_truth", "")
-
-        print(f"[{i}/{len(base_dataset)}] Processing: {question_id}")
-        try:
-            request_config: Dict[str, Any] = {
-                "model": model_id,
-                "input": question,
-                "tools": tools_list,
-            }
-            # DEBUG: print the request config
-            # print(f"Request config: {request_config}")
-            # print(f"Tools list: {tools_list}")
-            if instructions and instructions.strip():
-                request_config["instructions"] = instructions.strip()
-            if any(t.get("type") == "file_search" for t in tools_list):
-                request_config["include"] = ["file_search_call.results"]
-
-            # Run the request using the client
-            response = client.responses.create(**request_config)
-            # DEBUG: print the response (pretty-printed, works with non-JSON-serializable objects)
-            print("########## Response:")
-            pprint(response.__dict__ if hasattr(response, "__dict__") else response)
-            print(f"########## Response type: {type(response)}")
-
-            answer = getattr(response, "output_text", str(response))
-            if isinstance(answer, str):
-                answer = _strip_think_blocks(answer)
-
-            contexts = []
-            if hasattr(response, "output") and isinstance(response.output, list):
-                for output_item in response.output:
-                    if hasattr(output_item, "results") and isinstance(output_item.results, list):
-                        for result in output_item.results:
-                            if hasattr(result, "text") and result.text:
-                                contexts.append(result.text)
-
-            tool_calls = _extract_tool_calls(response)
-            ragas_entry = {
-                "id": question_id,
-                "question": question,
-                "answer": answer,
-                "contexts": contexts if contexts else [],
-                "ground_truth": ground_truth,
-            }
-            if tool_calls:
-                ragas_entry["tool_calls"] = tool_calls
-                # Append non-file_search tool call responses as contexts for RAGAS
-                for tc in tool_calls:
-                    if tc.get("tool_name") != "file_search":
-                        resp = tc.get("response")
-                        if resp is not None:
-                            ctx = resp if isinstance(resp, str) else json.dumps(resp, ensure_ascii=False)
-                            ragas_entry["contexts"].append(ctx)
-            print(f"  [OK] Answer generated ({len(ragas_entry['contexts'])} contexts, {len(tool_calls)} tool call(s))")
-            if "difficulty" in item:
-                ragas_entry["difficulty"] = item["difficulty"]
-            if item.get("expected_tool"):
-                ragas_entry["expected_tool"] = item["expected_tool"]
-            if item.get("expected_tool_parameters"):
-                ragas_entry["expected_tool_parameters"] = item["expected_tool_parameters"]
-
-            ragas_dataset.append(ragas_entry)
-
-        except Exception as e:
-            error_count += 1
-            errors.append(f"{question_id}: {str(e)}")
-            print(f"  [ERROR] {question_id}: {e}")
-            ragas_dataset.append({
-                "id": question_id,
-                "question": question,
-                "answer": f"ERROR: {str(e)}",
-                "contexts": [],
-                "ground_truth": ground_truth,
-                "difficulty": item.get("difficulty", "unknown"),
-                "error": True,
-            })
-
-    total = len(base_dataset)
-    success = total - error_count
-    print(f"\n[SUMMARY] Total: {total}, Successful: {success}, Failed: {error_count}")
-
-    if error_count == total:
-        raise ValueError(f"All questions failed. First error: {errors[0] if errors else 'Unknown'}")
-    if error_count > total / 2:
-        raise ValueError(f"Too many failures: {error_count}/{total}. Errors: {errors[:5]}")
-
-    return ragas_dataset
+    agent = Agent(type="default")
+    return agent.generate_ragas_dataset(
+        base_dataset=base_dataset,
+        client=client,
+        model_id=model_id,
+        vector_store_id=vector_store_id,
+        mcp_tools=mcp_tools,
+        instructions=instructions,
+        force_file_search=force_file_search,
+        ranker=ranker,
+        retrieval_mode=retrieval_mode,
+        file_search_max_chunks=file_search_max_chunks,
+        file_search_score_threshold=file_search_score_threshold,
+        file_search_max_tokens_per_chunk=file_search_max_tokens_per_chunk,
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -437,6 +256,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--file-search-max-chunks", type=int, default=5)
     parser.add_argument("--file-search-score-threshold", type=float, default=0.7)
     parser.add_argument("--file-search-max-tokens-per-chunk", type=int, default=512)
+    parser.add_argument(
+        "--force-file-search",
+        action="store_true",
+        help="Pre-fetch RAG chunks and inject as context (no file_search tool)",
+    )
 
     args = parser.parse_args()
     # Normalize: prefer positional, then --base-dataset
@@ -481,18 +305,30 @@ def main() -> int:
     if mcp_tools:
         print(f"[CONFIG] MCP tools: {len(mcp_tools)}")
 
-    ragas_dataset = generate_ragas_dataset(
-        base_dataset=base_dataset,
-        client=client,
-        model_id=args.model_id,
-        vector_store_id=vector_store_id,
-        mcp_tools=mcp_tools,
-        instructions=args.instructions,
-        retrieval_mode=args.retrieval_mode,
-        file_search_max_chunks=args.file_search_max_chunks,
-        file_search_score_threshold=args.file_search_score_threshold,
-        file_search_max_tokens_per_chunk=args.file_search_max_tokens_per_chunk,
-    )
+    try:
+        ragas_dataset = generate_ragas_dataset(
+            base_dataset=base_dataset,
+            client=client,
+            model_id=args.model_id,
+            vector_store_id=vector_store_id,
+            mcp_tools=mcp_tools,
+            instructions=args.instructions,
+            retrieval_mode=args.retrieval_mode,
+            file_search_max_chunks=args.file_search_max_chunks,
+            file_search_score_threshold=args.file_search_score_threshold,
+            file_search_max_tokens_per_chunk=args.file_search_max_tokens_per_chunk,
+            force_file_search=args.force_file_search,
+        )
+    except ValueError as e:
+        err = str(e)
+        if "500" in err or "Internal server error" in err:
+            print(
+                "Error: Llama Stack /v1/responses returned 500 for all requests. "
+                "Check Llama Stack server logs for the underlying cause (e.g. context length, model, or request format).",
+                file=sys.stderr,
+            )
+        print(f"ValueError: {e}", file=sys.stderr)
+        return 1
 
     with open(args.output, "w", encoding="utf-8") as f:
         json.dump(ragas_dataset, f, indent=2, ensure_ascii=False)

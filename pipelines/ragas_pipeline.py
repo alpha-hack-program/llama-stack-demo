@@ -23,7 +23,7 @@ Extracted from ragas_pipeline_version.yaml (KFP PipelineVersion).
 This pipeline:
 1. Loads a base dataset from a git repository
 2. Discovers MCP tools and resolves vector store (parallel)
-3. Generates a RAGAS dataset by querying a RAG system via Llama Stack
+3. Generates a RAGAS dataset by querying a RAG system via portazgo (Llama Stack)
 4. Runs RAGAS evaluation metrics on the generated dataset
 """
 
@@ -304,7 +304,11 @@ def resolve_vector_store(
 
 @dsl.component(
     base_image=PYTORCH_IMAGE,
-    packages_to_install=["llama-stack-client==0.3.5", "httpx"],
+    packages_to_install=[
+        "llama-stack-client==0.3.5",
+        "httpx",
+        "portazgo @ git+https://github.com/alpha-hack-program/portazgo.git",
+    ],
 )
 def generate_ragas_dataset(
     base_dataset_input: Input[Dataset],
@@ -323,8 +327,8 @@ def generate_ragas_dataset(
     """
     Generate RAGAS-compatible dataset with RAG answers and contexts.
 
-    Uses Llama Stack's Responses API to query the RAG system and generate
-    answers with retrieved contexts for each question in the base dataset.
+    Uses portazgo's Agent (Llama Stack Responses API) to query the RAG system
+    and generate answers with retrieved contexts for each question in the base dataset.
 
     Args:
         base_dataset_input: Input artifact containing the base dataset JSON
@@ -342,94 +346,10 @@ def generate_ragas_dataset(
     """
     import json
     import os
-    import re
-    from typing import Any, Dict, List
 
     import httpx
     from llama_stack_client import LlamaStackClient
-
-    def _strip_think_blocks(text: str) -> str:
-        """Remove <think>...</think> blocks from model output so the stored answer is clean."""
-        if not text or not isinstance(text, str):
-            return text
-        return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
-
-    def _serialize_for_json(val: Any) -> Any:
-        """Convert a value to something JSON-serializable."""
-        if val is None or isinstance(val, (bool, int, float, str)):
-            return val
-        if isinstance(val, (dict, list)):
-            return val
-        if hasattr(val, "__dict__"):
-            return {k: _serialize_for_json(v) for k, v in val.__dict__.items()}
-        return str(val)
-
-    def _extract_tool_calls(response: Any) -> List[Dict[str, Any]]:
-        """Extract tool calls from Llama Stack response (output list, then turns or tool_calls). Returns list of {tool_name, arguments, response}."""
-        out: List[Dict[str, Any]] = []
-        if hasattr(response, "output") and isinstance(response.output, list):
-            for item in response.output:
-                type_ = getattr(item, "type", None)
-                if type_ == "file_search_call":
-                    queries = getattr(item, "queries", None) or []
-                    results = getattr(item, "results", None) or []
-                    result_texts = [getattr(r, "text", "") or "" for r in results]
-                    out.append({
-                        "tool_name": "file_search",
-                        "arguments": {"queries": list(queries)},
-                        "response": result_texts,
-                    })
-                elif type_ and "mcp" in str(type_).lower() and type_ != "mcp_list_tools":
-                    name = getattr(item, "tool_name", None) or getattr(item, "name", None) or getattr(item, "server_label", None) or "mcp"
-                    args = getattr(item, "arguments", None) or getattr(item, "args", None) or {}
-                    # Llama Stack MCP call uses "output" for the tool result (not "response" or "result")
-                    resp = getattr(item, "output", None) or getattr(item, "response", None) or getattr(item, "result", None)
-                    if not isinstance(args, dict):
-                        try:
-                            args = json.loads(args) if isinstance(args, str) else {}
-                        except Exception:
-                            args = {} if args is None else {"raw": str(args)}
-                    out.append({"tool_name": str(name), "arguments": args, "response": _serialize_for_json(resp)})
-            if out:
-                return out
-        if hasattr(response, "turns") and response.turns:
-            for turn in response.turns:
-                if hasattr(turn, "tool_calls") and turn.tool_calls:
-                    for tc in turn.tool_calls:
-                        name = getattr(tc, "tool_name", None) or (tc.__dict__.get("tool_name") if hasattr(tc, "__dict__") else "unknown")
-                        args = getattr(tc, "arguments", None) or (tc.__dict__.get("arguments") if hasattr(tc, "__dict__") else {})
-                        resp = getattr(tc, "response", None) or (tc.__dict__.get("response") if hasattr(tc, "__dict__") else None)
-                        if isinstance(args, dict):
-                            pass
-                        else:
-                            try:
-                                args = json.loads(args) if isinstance(args, str) else (args or {})
-                            except Exception:
-                                args = {} if args is None else {"raw": str(args)}
-                        out.append({"tool_name": name, "arguments": args, "response": _serialize_for_json(resp)})
-                if hasattr(turn, "steps") and turn.steps:
-                    for step in turn.steps:
-                        name = getattr(step, "tool_name", None) or (getattr(step, "__dict__", {}).get("tool_name") or "unknown")
-                        args = getattr(step, "tool_args", None) or (getattr(step, "__dict__", {}).get("tool_args") or {})
-                        resp = getattr(step, "tool_response", None) or (getattr(step, "__dict__", {}).get("tool_response"))
-                        if not isinstance(args, dict):
-                            try:
-                                args = json.loads(args) if isinstance(args, str) else {}
-                            except Exception:
-                                args = {} if args is None else {"raw": str(args)}
-                        out.append({"tool_name": name, "arguments": args, "response": _serialize_for_json(resp)})
-        elif hasattr(response, "tool_calls") and response.tool_calls:
-            for tc in response.tool_calls:
-                d = tc.__dict__ if hasattr(tc, "__dict__") else {}
-                name = d.get("tool_name", "unknown")
-                args = d.get("arguments", {})
-                if not isinstance(args, dict):
-                    try:
-                        args = json.loads(args) if isinstance(args, str) else {}
-                    except Exception:
-                        args = {} if args is None else {"raw": str(args)}
-                out.append({"tool_name": name, "arguments": args, "response": _serialize_for_json(d.get("response"))})
-        return out
+    from portazgo import Agent
 
     llama_stack_host = os.environ.get("LLAMA_STACK_HOST")
     llama_stack_port = os.environ.get("LLAMA_STACK_PORT")
@@ -452,156 +372,52 @@ def generate_ragas_dataset(
 
     print(f"\n[LOAD] Loading base dataset from artifact: {base_dataset_input.path}")
     with open(base_dataset_input.path, "r", encoding="utf-8") as f:
-        base_dataset_json = f.read()
-    dataset = json.loads(base_dataset_json)
-    print(f"[OK] Loaded {len(dataset)} questions")
+        base_dataset = json.load(f)
+    print(f"[OK] Loaded {len(base_dataset)} questions")
 
-    print("\n[CONFIG] Configuring tools...")
-    tools_list: List[Dict[str, Any]] = []
-    max_chunks_int = int(file_search_max_chunks)  # coerce in case KFP passes float from YAML default
+    mcp_tools = json.loads(mcp_tools_json) if mcp_tools_json else []
+    max_chunks_int = int(file_search_max_chunks)
 
+    print("\n[CONFIG] Using portazgo Agent (default backend)...")
     if vector_store_id:
-        file_search_tool: Dict[str, Any] = {
-            "type": "file_search",
-            "vector_store_ids": [vector_store_id],
-            "filters": {},
-            "max_num_results": max_chunks_int,
-            "max_chunks": max_chunks_int,
-            "retrieval_mode": retrieval_mode,
-            "max_tokens_per_chunk": file_search_max_tokens_per_chunk,
-            "ranking_options": {
-                "ranker": ranker,
-                "score_threshold": file_search_score_threshold,
-            },
-        }
-        tools_list.append(file_search_tool)
         print(
-            f"   [OK] Added file_search tool (vector store: {vector_store_id}, "
+            f"   [OK] file_search (vector store: {vector_store_id}, "
             f"retrieval_mode={retrieval_mode}, ranker={ranker}, "
             f"max_chunks={max_chunks_int}, score_threshold={file_search_score_threshold}, "
             f"max_tokens_per_chunk={file_search_max_tokens_per_chunk})"
         )
-
-    mcp_tools = json.loads(mcp_tools_json) if mcp_tools_json else []
     if mcp_tools:
-        tools_list.extend(mcp_tools)
         print(f"   [OK] Added {len(mcp_tools)} MCP tool(s)")
-
-    print(f"\n[INFO] Total tools configured: {len(tools_list)}")
-    for tool in tools_list:
-        tool_type = tool.get("type", "unknown")
-        if tool_type == "mcp":
-            print(f"   - MCP: {tool.get('server_label')} ({tool.get('server_url')})")
-        elif tool_type == "file_search":
-            fs_opts = tool.get("file_search") or {}
-            print(f"   - File Search: {tool.get('vector_store_ids')} options={fs_opts}")
-        else:
-            print(f"   - {tool_type}")
 
     if instructions and instructions.strip():
         print(f"\n[INFO] System Instructions: {instructions[:100]}{'...' if len(instructions) > 100 else ''}")
 
-    print(f"\n[PROCESS] Processing questions using Responses API...")
+    print(f"\n[PROCESS] Processing questions via portazgo Agent...")
     print(f"Model: {model_id}")
     print(f"Vector Store: {vector_store_id}\n")
 
-    ragas_dataset = []
-    error_count = 0
-    errors: List[str] = []
+    agent = Agent(type="default")
+    ragas_dataset = agent.generate_ragas_dataset(
+        base_dataset=base_dataset,
+        client=client,
+        model_id=model_id,
+        vector_store_id=vector_store_id,
+        mcp_tools=mcp_tools,
+        instructions=instructions,
+        ranker=ranker,
+        retrieval_mode=retrieval_mode,
+        file_search_max_chunks=max_chunks_int,
+        file_search_score_threshold=file_search_score_threshold,
+        file_search_max_tokens_per_chunk=file_search_max_tokens_per_chunk,
+    )
 
-    for i, item in enumerate(dataset, 1):
-        question_id = item.get("id", f"q_{i}")
-        question = item["question"]
-        ground_truth = item.get("ground_truth", "")
-
-        print(f"[{i}/{len(dataset)}] Processing: {question_id}")
-
-        try:
-            request_config: Dict[str, Any] = {
-                "model": model_id,
-                "input": question,
-                "tools": tools_list,
-            }
-            if instructions and instructions.strip():
-                request_config["instructions"] = instructions.strip()
-            if any(t.get("type") == "file_search" for t in tools_list):
-                request_config["include"] = ["file_search_call.results"]
-
-            response = client.responses.create(**request_config)
-            answer = getattr(response, "output_text", str(response))
-            if isinstance(answer, str):
-                answer = _strip_think_blocks(answer)
-
-            contexts = []
-            if hasattr(response, "output") and isinstance(response.output, list):
-                for output_item in response.output:
-                    if hasattr(output_item, "results") and isinstance(output_item.results, list):
-                        for result in output_item.results:
-                            if hasattr(result, "text") and result.text:
-                                contexts.append(result.text)
-
-            tool_calls = _extract_tool_calls(response)
-            ragas_entry = {
-                "id": question_id,
-                "question": question,
-                "answer": answer,
-                "contexts": contexts if contexts else [],
-                "ground_truth": ground_truth,
-            }
-            if tool_calls:
-                ragas_entry["tool_calls"] = tool_calls
-                # Append non-file_search tool call responses as contexts for RAGAS
-                for tc in tool_calls:
-                    if tc.get("tool_name") != "file_search":
-                        resp = tc.get("response")
-                        if resp is not None:
-                            ctx = resp if isinstance(resp, str) else json.dumps(resp, ensure_ascii=False)
-                            ragas_entry["contexts"].append(ctx)
-            print(f"  [OK] Answer generated ({len(ragas_entry['contexts'])} contexts, {len(tool_calls)} tool call(s))")
-            if "difficulty" in item:
-                ragas_entry["difficulty"] = item["difficulty"]
-            if item.get("expected_tool"):
-                ragas_entry["expected_tool"] = item["expected_tool"]
-            if item.get("expected_tool_parameters"):
-                ragas_entry["expected_tool_parameters"] = item["expected_tool_parameters"]
-
-            ragas_dataset.append(ragas_entry)
-
-        except Exception as e:
-            error_count += 1
-            errors.append(f"{question_id}: {str(e)}")
-            print(f"  [ERROR] Error processing {question_id}: {e}")
-            ragas_dataset.append({
-                "id": question_id,
-                "question": question,
-                "answer": f"ERROR: {str(e)}",
-                "contexts": [],
-                "ground_truth": ground_truth,
-                "difficulty": item.get("difficulty", "unknown"),
-                "error": True,
-            })
-
-    total_questions = len(dataset)
-    success_count = total_questions - error_count
+    success_count = sum(1 for e in ragas_dataset if not e.get("error"))
+    error_count = len(ragas_dataset) - success_count
 
     print(f"\n[SUMMARY] RAGAS dataset generation summary:")
-    print(f"   Total questions: {total_questions}")
+    print(f"   Total questions: {len(base_dataset)}")
     print(f"   Successful: {success_count}")
     print(f"   Failed: {error_count}")
-
-    if error_count == total_questions:
-        raise ValueError(
-            f"All {total_questions} questions failed to process. "
-            f"First error: {errors[0] if errors else 'Unknown'}"
-        )
-    if error_count > total_questions / 2:
-        raise ValueError(
-            f"Too many questions failed: {error_count}/{total_questions} ({error_count*100//total_questions}%). "
-            f"Errors: {errors[:5]}{'...' if len(errors) > 5 else ''}"
-        )
-    if error_count > 0:
-        print(f"   [WARN] Warning: {error_count} question(s) failed but continuing with {success_count} successful entries")
-
     print("\n[DONE] RAGAS dataset generation complete!")
 
     ragas_dataset_json = json.dumps(ragas_dataset, indent=2, ensure_ascii=False)
