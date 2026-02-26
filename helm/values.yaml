@@ -191,7 +191,9 @@ monitoring:
   dsciName: default-dsci
   namespace: redhat-ods-monitoring
   patcherImage: registry.redhat.io/openshift4/ose-cli:v4.14
-  deployTempo: true
+  # General resources (Tempo, OTel collector) are created by scripts/setup-monitoring-for-helm.sh
+  # and are not part of this release. Set to true only if this chart should create them.
+  deployTempo: false
   tempoName: data-science-tempomonolithic
   tempoStorageBackend: pv
   tempoStorageSize: 10Gi
@@ -207,7 +209,7 @@ monitoring:
       backend: pv
       retention: 2160h0m0s
       size: 100Gi
-  deployCollector: true
+  deployCollector: false
   collectorName: data-science-collector
   collectorReplicas: 1
   tempoUrl: http://tempo-data-science-tempomonolithic.redhat-ods-monitoring.svc.cluster.local:3200

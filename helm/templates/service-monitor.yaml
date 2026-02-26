@@ -20,9 +20,9 @@ spec:
       name: {{ .name }}-metrics
 {{- end }}
 {{- end }}
----
 # For all MCP Servers
 {{- range .Values.mcpServers }}
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:

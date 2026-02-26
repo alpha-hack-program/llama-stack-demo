@@ -507,6 +507,24 @@ spec:
         size: 100Gi
 ```
 
+### One-time setup: general monitoring and DSCI
+
+After `helm upgrade` and before relying on Grafana/traces, run once:
+
+```bash
+./scripts/setup-monitoring-for-helm.sh
+```
+
+This applies general resources (namespace, Tempo, OpenTelemetry collector) and **patches DSCInitialization** so the OpenShift AI operator deploys Prometheus (`data-science-monitoringstack-prometheus`) and `data-science-instrumentation`. Without the DSCI patch, the Grafana Prometheus datasource and `instrumentation.opentelemetry.io/inject-python` (e.g. in the playground) have no backing services. Manifests: `scripts/monitoring-general/`. Use `--dry-run` to preview.
+
+To verify that monitoring and telemetry are ready, run:
+
+```bash
+./scripts/check-monitoring-telemetry.sh
+```
+
+Use `--lenient` to only verify CRs and services (skip pod-running and Instrumentation; useful right after setup). Use `--skip-prometheus` or `--skip-instrumentation` if those components are not required.
+
 ### Collector Service (Workaround)
 
 If the collector service is missing, create it:
