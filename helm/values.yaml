@@ -81,7 +81,7 @@ pipelines:
   # Git repository for pipeline definitions
   git:
     repo: https://github.com/alpha-hack-program/llama-stack-demo.git
-    ref: next
+    ref: main
     context: pipelines
   # Comma-separated list of pipeline names (without .py extension)
   names: "rag_pipeline, ragas_pipeline"
@@ -98,7 +98,7 @@ pipelines:
     params:
       gitRepo: alpha-hack-program/llama-stack-demo
       gitContext: client/docs
-      gitRef: next
+      gitRef: main
       filenames: "2025_102_SD.md, 2025_61-FR_INT.md, 2025_61-FR.md, 2025_73_JU.md, 2025_88_GD.md, 2025_94_FC.md, 2025-47-SA-Act.md, 2025-47-SA-R1.md, parasol-earnings-report.md"
       ranker: default
       useGpu: false
@@ -109,7 +109,7 @@ pipelines:
     params:
       gitRepo: alpha-hack-program/llama-stack-demo
       gitContext: materials/datasets
-      gitRef: next
+      gitRef: main
       base_dataset_filename: base_dataset_small.json
       tools: "all"
       instructions: "You are a helpful assistant that can answer questions about the documents in the vector store."
