@@ -43,7 +43,7 @@ lsdResources:
     cpu: 2
     memory: 8Gi
 
-llamaStackDemoCoreImage: quay.io/atarazana/llama-stack-demo-core:0.6.2
+llamaStackDemoCoreImage: quay.io/atarazana/llama-stack-demo-core:0.5.3
 
 loaderDelay: 15
 loaderJobRetries: 60
@@ -81,7 +81,7 @@ pipelines:
   # Git repository for pipeline definitions
   git:
     repo: https://github.com/alpha-hack-program/llama-stack-demo.git
-    ref: main
+    ref: next
     context: pipelines
   # Comma-separated list of pipeline names (without .py extension)
   names: "rag_pipeline, ragas_pipeline"
@@ -98,7 +98,7 @@ pipelines:
     params:
       gitRepo: alpha-hack-program/llama-stack-demo
       gitContext: client/docs
-      gitRef: main
+      gitRef: next
       filenames: "2025_102_SD.md, 2025_61-FR_INT.md, 2025_61-FR.md, 2025_73_JU.md, 2025_88_GD.md, 2025_94_FC.md, 2025-47-SA-Act.md, 2025-47-SA-R1.md, parasol-earnings-report.md"
       ranker: default
       useGpu: false
@@ -109,7 +109,7 @@ pipelines:
     params:
       gitRepo: alpha-hack-program/llama-stack-demo
       gitContext: materials/datasets
-      gitRef: main
+      gitRef: next
       base_dataset_filename: base_dataset_small.json
       tools: "all"
       instructions: "You are a helpful assistant that can answer questions about the documents in the vector store."
@@ -191,9 +191,7 @@ monitoring:
   dsciName: default-dsci
   namespace: redhat-ods-monitoring
   patcherImage: registry.redhat.io/openshift4/ose-cli:v4.14
-  # General resources (Tempo, OTel collector) are created by scripts/setup-monitoring-for-helm.sh
-  # and are not part of this release. Set to true only if this chart should create them.
-  deployTempo: false
+  deployTempo: true
   tempoName: data-science-tempomonolithic
   tempoStorageBackend: pv
   tempoStorageSize: 10Gi
@@ -209,7 +207,7 @@ monitoring:
       backend: pv
       retention: 2160h0m0s
       size: 100Gi
-  deployCollector: false
+  deployCollector: true
   collectorName: data-science-collector
   collectorReplicas: 1
   tempoUrl: http://tempo-data-science-tempomonolithic.redhat-ods-monitoring.svc.cluster.local:3200
@@ -330,6 +328,30 @@ mcpServers:
     mcp_transport: "streamable-http"
     protocol: "http"
     host: eligibility-engine
+    port: 8000
+    uri: "/mcp"
+    replicas: 1
+    resources:
+      limits:
+        cpu: 500m
+        memory: 128Mi
+      requests:
+        cpu: 250m
+        memory: 64Mi
+    env:
+      - name: RUST_LOG
+        value: "debug"
+  - id: penalty-engine
+    provider_id: model-context-protocol
+    runtime: rust
+    vcs:
+      uri: https://github.com/alpha-hack-program/penalty-engine-mcp-rs.git
+      ref: main
+      path: .
+    image: quay.io/dgarciap/penalty-engine:1.3.3
+    mcp_transport: "streamable-http"
+    protocol: "http"
+    host: penalty-engine
     port: 8000
     uri: "/mcp"
     replicas: 1
