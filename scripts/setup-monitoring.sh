@@ -14,15 +14,15 @@
 #   - Grafana, GrafanaFolder, GrafanaDatasource, GrafanaDashboard
 #   - ServiceMonitors
 #
-# Usage: ./scripts/setup-monitoring-for-helm.sh [--dry-run]
-# Env:   MANIFESTS_DIR  Directory with general manifests (default: scripts/monitoring-general)
+# Usage: ./scripts/setup-monitoring.sh [--dry-run]
+# Env:   MANIFESTS_DIR  Directory with general manifests (default: scripts/resources)
 #        DSCI_NAME      DSCInitialization name to patch (default: default-dsci)
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-MANIFESTS_DIR="${MANIFESTS_DIR:-$SCRIPT_DIR/monitoring-general}"
+MANIFESTS_DIR="${MANIFESTS_DIR:-$SCRIPT_DIR/resources}"
 
 DRY_RUN=false
 if [[ "${1:-}" == "--dry-run" ]]; then

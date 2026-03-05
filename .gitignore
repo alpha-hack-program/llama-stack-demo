@@ -40,3 +40,7 @@ dist/
 
 # Helm secrets
 helm/values-secrets.yaml
+
+# Htpasswd files (contain passwords)
+htpasswd.dry-run
+htpasswd.workshop

@@ -2,7 +2,7 @@
 # Generates an htpasswd file with N users, creates an OpenShift secret from it,
 # and configures the cluster OAuth to use the HTPasswd identity provider.
 #
-# Usage: setup-htpasswd-oauth.sh [--dry-run|--no-update] <number_of_users> [password]
+# Usage: setup-htpasswd-oauth.sh [--dry-run|--no-update] [--silent] <number_of_users> [password]
 # Env:   HTPASSWD_SECRET_NAME  Secret name in openshift-config (default: htpasswd-secret)
 #        HTPASSWD_IDP_NAME     OAuth identity provider name (default: htpasswd)
 #        HTPASSWD_PASSWORD     Password for all users (overridden by [password]; if unset, one is generated)
@@ -14,8 +14,9 @@ HTPASSWD_SECRET_NAME="${HTPASSWD_SECRET_NAME:-htpasswd-secret}"
 HTPASSWD_IDP_NAME="${HTPASSWD_IDP_NAME:-htpasswd}"
 
 usage() {
-  echo "Usage: $0 [--dry-run|--no-update] <number_of_users> [password]" >&2
+  echo "Usage: $0 [--dry-run|--no-update] [--silent] <number_of_users> [password]" >&2
   echo "  --dry-run, --no-update  Generate htpasswd file only; do not create secret or update OAuth." >&2
+  echo "  --silent                Suppress informational output (for use when called from other scripts)." >&2
   echo "  number_of_users         Number of users to create in the htpasswd file (e.g. 5 → user1..user5)." >&2
   echo "  password                Optional. Password for all users. If omitted, a random 8-char (letters, numbers, 1 special) is generated." >&2
   echo "" >&2
@@ -24,11 +25,13 @@ usage() {
 }
 
 DRY_RUN=0
+SILENT=0
 NUM_USERS=""
 PASSWORD_ARG=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run|--no-update) DRY_RUN=1; shift ;;
+    --silent) SILENT=1; shift ;;
     *)
       if [[ -z "$NUM_USERS" ]]; then
         NUM_USERS="$1"
@@ -44,30 +47,16 @@ if [[ -z "$NUM_USERS" ]]; then
   usage
 fi
 
-# Password: parameter > env > generated (8 ASCII: letters, numbers, 1 special)
-# LC_ALL=C so tr treats /dev/urandom as bytes (avoids "Illegal byte sequence" on macOS).
+# Password: parameter > env > generated (8 ASCII: letters and numbers only, safe for eval/shell)
 generate_password() {
-  local special='!@#$%^&*'
   local letters='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
   local digits='0123456789'
-  local p1 p2 rest combined arr t j i
-  p1=$( ( LC_ALL=C; head -c 100 /dev/urandom | tr -dc "$special" | head -c 1 ) )
-  p2=$( ( LC_ALL=C; head -c 100 /dev/urandom | tr -dc "$digits" | head -c 1 ) )
-  rest=$( ( LC_ALL=C; head -c 100 /dev/urandom | tr -dc "$letters$digits" | head -c 6 ) )
-  combined="$p1$p2$rest"
-  # Ensure we have exactly 8 chars (retry if tr produced nothing in locale-sensitive env)
-  while [[ ${#combined} -lt 8 ]]; do
-    rest=$( ( LC_ALL=C; head -c 100 /dev/urandom | tr -dc "$letters$digits" | head -c $(( 8 - ${#combined} )) ) )
-    combined="${combined}${rest}"
+  local pool="${letters}${digits}"
+  local combined=""
+  for (( i = 0; i < 8; i++ )); do
+    combined+="${pool:$((RANDOM % ${#pool})):1}"
   done
-  combined=${combined:0:8}
-  arr=()
-  for (( i = 0; i < 8; i++ )); do arr[i]=${combined:i:1}; done
-  for (( i = 7; i >= 1; i-- )); do
-    j=$(( RANDOM % (i + 1) ))
-    t=${arr[i]}; arr[i]=${arr[j]}; arr[j]=$t
-  done
-  printf '%s' "${arr[@]}"
+  printf '%s' "$combined"
 }
 
 PASSWORD_WAS_GENERATED=0
@@ -130,44 +119,60 @@ else
   HTPASSWD_FILE="${TMPDIR_htpasswd}/htpasswd"
 fi
 
+msg() { [[ "$SILENT" -eq 0 ]] && echo "$@" || true; }
+run_htpasswd() {
+  if [[ "$SILENT" -eq 1 ]]; then
+    htpasswd "$@" 2>/dev/null
+  else
+    htpasswd "$@"
+  fi
+}
+
 if [[ "$DRY_RUN" -eq 1 ]]; then
-  echo "Dry run: generating htpasswd file only (no secret or OAuth update)."
-  echo ""
+  msg "Dry run: generating htpasswd file only (no secret or OAuth update)."
+  msg ""
 fi
-echo "Creating htpasswd file with ${NUM_USERS} user(s)..."
+msg "Creating htpasswd file with ${NUM_USERS} user(s)..."
 
 for (( i = 1; i <= NUM_USERS; i++ )); do
   username="user${i}"
   if [[ $i -eq 1 ]]; then
-    htpasswd -c -B -b "$HTPASSWD_FILE" "$username" "$HTPASSWD_PASSWORD"
+    run_htpasswd -c -B -b "$HTPASSWD_FILE" "$username" "$HTPASSWD_PASSWORD"
   else
-    htpasswd -B -b "$HTPASSWD_FILE" "$username" "$HTPASSWD_PASSWORD"
+    run_htpasswd -B -b "$HTPASSWD_FILE" "$username" "$HTPASSWD_PASSWORD"
   fi
 done
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
-  echo ""
-  echo "Done (dry run). HTPasswd file written to: ${HTPASSWD_FILE}"
-  echo ""
-  echo "Users (${NUM_USERS}):"
-  for (( i = 1; i <= NUM_USERS; i++ )); do
-    echo "  user${i} / ${HTPASSWD_PASSWORD}"
-  done
-  if [[ "$PASSWORD_WAS_GENERATED" -eq 1 ]]; then
+  if [[ "$SILENT" -eq 1 ]]; then
+    echo "HTPASSWD_FILE=${HTPASSWD_FILE}"
+    if [[ "$PASSWORD_WAS_GENERATED" -eq 1 ]]; then
+      echo "HTPASSWD_PASSWORD=${HTPASSWD_PASSWORD}"
+    fi
+  else
     echo ""
-    echo "Generated password (save it): ${HTPASSWD_PASSWORD}"
+    echo "Done (dry run). HTPasswd file written to: ${HTPASSWD_FILE}"
+    echo ""
+    echo "Users (${NUM_USERS}):"
+    for (( i = 1; i <= NUM_USERS; i++ )); do
+      echo "  user${i} / ${HTPASSWD_PASSWORD}"
+    done
+    if [[ "$PASSWORD_WAS_GENERATED" -eq 1 ]]; then
+      echo ""
+      echo "Generated password (save it): ${HTPASSWD_PASSWORD}"
+    fi
+    echo ""
+    echo "To apply later: create the secret and update OAuth (run this script without --dry-run)."
   fi
-  echo ""
-  echo "To apply later: create the secret and update OAuth (run this script without --dry-run)."
   exit 0
 fi
 
 # Updating the OAuth IdP or htpasswd secret does NOT invalidate your current session.
 # Your existing token stays valid until it expires; only new logins use the new IdP/secret.
-echo "Creating/updating secret ${HTPASSWD_SECRET_NAME} in openshift-config..."
+msg "Creating/updating secret ${HTPASSWD_SECRET_NAME} in openshift-config..."
 oc create secret generic "$HTPASSWD_SECRET_NAME" --from-file=htpasswd="$HTPASSWD_FILE" -n openshift-config --dry-run=client -o yaml | oc apply -f -
 
-echo "Updating OAuth cluster to use HTPasswd identity provider..."
+msg "Updating OAuth cluster to use HTPasswd identity provider..."
 
 # Refresh OAuth spec (may have changed) and ensure we have exactly one HTPasswd idp (ours)
 OAUTH_JSON=$(oc get oauth cluster -o json)
@@ -193,14 +198,14 @@ OAUTH_PATCHED=$(echo "$OAUTH_JSON" | jq --arg idp_name "$HTPASSWD_IDP_NAME" --ar
 
 echo "$OAUTH_PATCHED" | oc apply -f -
 
-echo ""
-echo "Done. HTPasswd OAuth has been successfully updated with ${NUM_USERS} user(s):"
+msg ""
+msg "Done. HTPasswd OAuth has been successfully updated with ${NUM_USERS} user(s):"
 for (( i = 1; i <= NUM_USERS; i++ )); do
-  echo "  user${i} / ${HTPASSWD_PASSWORD}"
+  msg "  user${i} / ${HTPASSWD_PASSWORD}"
 done
 if [[ "$PASSWORD_WAS_GENERATED" -eq 1 ]]; then
-  echo ""
-  echo "Generated password (save it): ${HTPASSWD_PASSWORD}"
+  msg ""
+  msg "Generated password (save it): ${HTPASSWD_PASSWORD}"
 fi
-echo ""
-echo "Users can log in with: oc login -u user<N> -p ${HTPASSWD_PASSWORD} <cluster_api_url>"
+msg ""
+msg "Users can log in with: oc login -u user<N> -p ${HTPASSWD_PASSWORD} <cluster_api_url>"

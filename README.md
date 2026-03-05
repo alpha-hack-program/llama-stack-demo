@@ -215,10 +215,24 @@ oc login --server=<your-cluster-api> --token=<your-token>
 
 ### Create the Project
 
+For simplicity we're assiging nodes based on the user running these instructions. You would usually extract the user using `oc whoami`.
+
+```sh
+LAB_USER=<YOUR_USER>
+```
+
+You can use this script to assign a user to a node.
+
+**Optional:** set the type of instance to assign with `export INSTANCE_TYPE="g5.4xlarge"`
+
+```sh
+./scripts/assign-node-to-user.sh ${LAB_USER}
+```
+
 Create the new project and label it for OpenShift AI:
 
 ```bash
-PROJECT="llama-stack-demo"
+PROJECT="llama-stack-demo-${LAB_USER}"
 
 oc new-project ${PROJECT}
 oc label namespace ${PROJECT} modelmesh-enabled=false opendatahub.io/dashboard=true
@@ -229,13 +243,13 @@ oc label namespace ${PROJECT} modelmesh-enabled=false opendatahub.io/dashboard=t
 **Default deployment (NVIDIA GPU with Llama 3.1 8B):**
 
 ```bash
-helm install llama-stack-demo helm/ --namespace ${PROJECT} --timeout 20m
+helm install llama-stack-demo helm/ --set assigned="${PROJECT}" --namespace ${PROJECT} --timeout 20m
 ```
 
 **With secrets file (for remote models with API keys):**
 
 ```bash
-helm install llama-stack-demo helm/ -f helm/values-secrets.yaml --set assigned="${PROJECT}-user1" --namespace ${PROJECT} --timeout 20m
+helm install llama-stack-demo helm/ -f helm/values-secrets.yaml --set assigned="${PROJECT}" --namespace ${PROJECT} --timeout 20m
 ```
 
 ### Wait for Pods
@@ -512,10 +526,10 @@ spec:
 After `helm upgrade` and before relying on Grafana/traces, run once:
 
 ```bash
-./scripts/setup-monitoring-for-helm.sh
+./scripts/setup-monitoring.sh
 ```
 
-This applies general resources (namespace, Tempo, OpenTelemetry collector) and **patches DSCInitialization** so the OpenShift AI operator deploys Prometheus (`data-science-monitoringstack-prometheus`) and `data-science-instrumentation`. Without the DSCI patch, the Grafana Prometheus datasource and `instrumentation.opentelemetry.io/inject-python` (e.g. in the playground) have no backing services. Manifests: `scripts/monitoring-general/`. Use `--dry-run` to preview.
+This applies general resources (namespace, Tempo, OpenTelemetry collector) and **patches DSCInitialization** so the OpenShift AI operator deploys Prometheus (`data-science-monitoringstack-prometheus`) and `data-science-instrumentation`. Without the DSCI patch, the Grafana Prometheus datasource and `instrumentation.opentelemetry.io/inject-python` (e.g. in the playground) have no backing services. Manifests: `scripts/resources/`. Use `--dry-run` to preview.
 
 To verify that monitoring and telemetry are ready, run:
 

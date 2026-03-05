@@ -322,7 +322,7 @@ kind: ClusterRole
 kind: Role
 {{- end }}
 metadata:
-  name: {{ $host }}-{{ if $clusterWide }}clusterrole{{ else }}role{{ end }}
+  name: {{ $host }}-{{ if $clusterWide }}{{ $namespace }}-clusterrole{{ else }}role{{ end }}
   {{- if not $clusterWide }}
   namespace: {{ $namespace }}
   {{- end }}

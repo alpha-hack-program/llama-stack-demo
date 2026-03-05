@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verifies that monitoring and telemetry resources exist and are ready in the
 # cluster (namespace, Tempo, OpenTelemetry collector, Prometheus, instrumentation).
-# Run after ./scripts/setup-monitoring-for-helm.sh and once the operators have reconciled.
+# Run after ./scripts/setup-monitoring.sh and once the operators have reconciled.
 #
 # Usage: ./scripts/check-monitoring-telemetry.sh [--lenient] [--skip-prometheus] [--skip-instrumentation]
 # Env:   MONITORING_NAMESPACE  (default: redhat-ods-monitoring)
@@ -125,7 +125,7 @@ if [[ $FAILED -eq 0 ]]; then
   echo "All checks passed. Monitoring and telemetry are in place."
   exit 0
 else
-  echo "Some checks failed. Ensure ./scripts/setup-monitoring-for-helm.sh was run and operators have reconciled."
+  echo "Some checks failed. Ensure ./scripts/setup-monitoring.sh was run and operators have reconciled."
   echo "For pod status: oc get pods -n $MONITORING_NAMESPACE"
   exit 1
 fi

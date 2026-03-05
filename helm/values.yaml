@@ -25,7 +25,8 @@ ragDefaults:
   enableRagas: true
   # modelId: llama-3-1-8b-w4a16/llama-3-1-8b-w4a16
   modelId: qwen3-8b-fp8-dynamic/qwen3-8b-fp8-dynamic
-  evaluationModelId: llama-4-scout-17b-16e-w4a16/Llama-4-Scout-17B-16E-W4A16
+  # evaluationModelId: llama-4-scout-17b-16e-w4a16/Llama-4-Scout-17B-16E-W4A16
+  evaluationModelId: qwen3-8b-fp8-dynamic/qwen3-8b-fp8-dynamic
   vectorStoreBaseName: rag-store
   vectorStoreProviderIds: "milvus-remote, pgvector"
 
@@ -190,12 +191,17 @@ otelCollector:
   metricExportInterval: 60000
   telemetrySinks: otel_trace, otel_metric
 
+grafana:
+  proxyRbac:
+    # Set to false when RBAC is pre-created by scripts/setup-grafana-proxy-rbac.sh (workshop mode)
+    create: true
+
 monitoring:
   enable: true
   dsciName: default-dsci
   namespace: redhat-ods-monitoring
   patcherImage: registry.redhat.io/openshift4/ose-cli:v4.14
-  # General resources (Tempo, OTel collector) are created by scripts/setup-monitoring-for-helm.sh
+  # General resources (Tempo, OTel collector) are created by scripts/setup-monitoring.sh
   # and are not part of this release. Set to true only if this chart should create them.
   deployTempo: false
   tempoName: data-science-tempomonolithic
@@ -379,45 +385,45 @@ mcpServers:
     env:
       - name: RUST_LOG
         value: "debug"
-  - id: cluster-insights
-    provider_id: model-context-protocol
-    runtime: rust
-    vcs:
-      uri: https://github.com/alpha-hack-program/cluster-insights-mcp-rs.git
-      ref: main
-      path: .
-    # image: quay.io/atarazana/cluster-insights-mcp-rs:1.3.2
-    mcp_transport: "streamable-http"
-    protocol: "http"
-    host: cluster-insights
-    port: 8000
-    uri: "/mcp"
-    replicas: 1
-    resources:
-      limits:
-        cpu: 500m
-        memory: 128Mi
-      requests:
-        cpu: 250m
-        memory: 64Mi
-    env:
-      - name: RUST_LOG
-        value: "debug"
-    rbac:
-      clusterWide: true
-      rules:
-        # Permissions to read node information for cluster capacity analysis
-        - apiGroups: [""]
-          resources: ["nodes"]
-          verbs: ["get", "list"]
-        # Permissions to read pod information for resource allocation analysis
-        - apiGroups: [""]
-          resources: ["pods"]
-          verbs: ["get", "list"]
-        # Permissions to read namespace information for namespace-level resource usage
-        - apiGroups: [""]
-          resources: ["namespaces"]
-          verbs: ["get", "list"]
+  # - id: cluster-insights
+  #   provider_id: model-context-protocol
+  #   runtime: rust
+  #   vcs:
+  #     uri: https://github.com/alpha-hack-program/cluster-insights-mcp-rs.git
+  #     ref: main
+  #     path: .
+  #   image: quay.io/atarazana/cluster-insights-mcp-rs:1.3.2
+  #   mcp_transport: "streamable-http"
+  #   protocol: "http"
+  #   host: cluster-insights
+  #   port: 8000
+  #   uri: "/mcp"
+  #   replicas: 1
+  #   resources:
+  #     limits:
+  #       cpu: 500m
+  #       memory: 128Mi
+  #     requests:
+  #       cpu: 250m
+  #       memory: 64Mi
+  #   env:
+  #     - name: RUST_LOG
+  #       value: "debug"
+  #   rbac:
+  #     clusterWide: true
+  #     rules:
+  #       # Permissions to read node information for cluster capacity analysis
+  #       - apiGroups: [""]
+  #         resources: ["nodes"]
+  #         verbs: ["get", "list"]
+  #       # Permissions to read pod information for resource allocation analysis
+  #       - apiGroups: [""]
+  #         resources: ["pods"]
+  #         verbs: ["get", "list"]
+  #       # Permissions to read namespace information for namespace-level resource usage
+  #       - apiGroups: [""]
+  #         resources: ["namespaces"]
+  #         verbs: ["get", "list"]
   # - id: finance-engine
   #   provider_id: model-context-protocol
   #   runtime: rust
