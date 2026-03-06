@@ -337,6 +337,30 @@ localModels:
   #       value: '0'
 
 mcpServers:
+  - id: penalty-engine
+    provider_id: model-context-protocol
+    runtime: rust
+    vcs:
+      uri: https://github.com/alpha-hack-program/penalty-engine-mcp-rs.git
+      ref: main
+      path: .
+    image: quay.io/dgarciap/penalty-engine:1.3.3
+    mcp_transport: "streamable-http"
+    protocol: "http"
+    host: penalty-engine
+    port: 8000
+    uri: "/mcp"
+    replicas: 1
+    resources:
+      limits:
+        cpu: 500m
+        memory: 128Mi
+      requests:
+        cpu: 250m
+        memory: 64Mi
+    env:
+      - name: RUST_LOG
+        value: "debug"
   - id: eligibility-engine
     provider_id: model-context-protocol
     runtime: rust
