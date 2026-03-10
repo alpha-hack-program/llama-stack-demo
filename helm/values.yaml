@@ -178,7 +178,7 @@ otelCollector:
   protocol: http/protobuf
   tracesEndpoint: http://data-science-collector-collector-headless.redhat-ods-monitoring.svc.cluster.local:4318/v1/traces
   metricsEndpoint: http://data-science-collector-collector-headless.redhat-ods-monitoring.svc.cluster.local:4318/v1/metrics
-  resourceAttributes: service.name=llamastack-user1-canopy,service.version=1.0.0,deployment.environment=development
+  resourceAttributes: service.version=1.0.0,deployment.environment=development
   serviceName: llama-stack-demo
   serviceVersion: 1.0.0
   deploymentEnvironment: development
@@ -189,7 +189,7 @@ otelCollector:
   bspMaxExportBatchSize: 100
   bspExportTimeout: 30000
   metricExportInterval: 60000
-  telemetrySinks: otel_trace, otel_metric
+  telemetrySinks: otel_trace,otel_metric
 
 grafana:
   proxyRbac:
