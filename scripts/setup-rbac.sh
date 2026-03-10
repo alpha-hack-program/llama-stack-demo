@@ -157,6 +157,15 @@ subjects:
 EOF
 
   echo "  Created RBAC for ${PROJECT}"
+
+  # Annotate the namespace so the OTel Operator injects Python auto-instrumentation
+  # into all pods (including those managed by the LlamaStackDistribution operator).
+  # The Instrumentation CR named "${CUSTOM_PROJECT}-instrumentation" is created by the
+  # Helm chart when otelCollector.enabled=true.
+  run oc annotate namespace "$PROJECT" \
+    "instrumentation.opentelemetry.io/inject-python=${CUSTOM_PROJECT}-instrumentation" \
+    --overwrite
+  echo "  Annotated namespace ${PROJECT} for OTel Python auto-instrumentation"
 done
 
 echo ""

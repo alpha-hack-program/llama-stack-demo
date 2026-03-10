@@ -18,8 +18,12 @@ spec:
     exporters:
       otlphttp:
         endpoint: http://tempo-data-science-tempomonolithic.redhat-ods-monitoring.svc.cluster.local:4318
+        headers:
+          X-Scope-OrgID: redhat-ods-monitoring
+      debug:
+        verbosity: detailed
     service:
       pipelines:
         traces:
           receivers: [otlp]
-          exporters: [otlphttp]
+          exporters: [otlphttp, debug]

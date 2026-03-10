@@ -5,14 +5,14 @@ metadata:
   name: {{ .Values.app }}-traces-dashboard
   namespace: {{ .Release.Namespace }}
 spec:
-  folder: {{ .Release.Namespace | title }} Dashboards
+  folderRef: {{ .Values.app }}-folder
   instanceSelector:
     matchLabels:
       dashboards: "grafana"
   json: |
     {
       "title": "Distributed Traces",
-      "uid": "{{ .Values.app }}-traces-{{ .Release.Namespace }}",
+      "uid": "{{ printf "%s-traces-%s" .Values.app .Release.Namespace | trunc 40 }}",
       "tags": ["traces", "tempo", "{{ .Values.app }}"],
       "timezone": "browser",
       "schemaVersion": 39,
@@ -85,7 +85,6 @@ spec:
               "queryType": "traceql",
               "refId": "A",
               "tableType": "traces",
-              "metricsQueryType": "range",
               "filters": []
             }
           ],

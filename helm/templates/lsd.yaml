@@ -13,7 +13,16 @@ metadata:
     app.openshift.io/runtime: python
 spec:
   replicas: 1
-  server:
+  network:
+    exposeRoute: true
+    allowedFrom:
+      namespaces:
+        - redhat-ods-applications
+        - {{ .Release.Namespace }}
+      labels:
+        - app.kubernetes.io\/part-of/{{ .Values.partOf }}
+        - app/llama-stack
+  server:  
     userConfig:
       # reference to the configmap that contains Llama stack configuration.
       configMapName: {{ .Values.app }}-run
