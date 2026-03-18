@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
-# Creates configmap-patcher RBAC (ClusterRole, ClusterRoleBinding, Role, RoleBinding)
-# for each workshop namespace. Run as cluster-admin before users install the Helm chart.
+# Creates configmap-patcher RBAC and MLflow pipeline-runner RBAC for each workshop
+# namespace. Run as cluster-admin before users install the Helm chart.
 # These resources require cluster-admin because they include cluster-scoped ClusterRoles
 # and resources in redhat-ods-applications namespace.
 #
-# ClusterRole name: configmap-patcher-ingress-reader (shared)
-# ClusterRoleBinding: configmap-patcher-ingress-reader-${PROJECT} per namespace
-# Role in redhat-ods-applications: configmap-patcher-mcp-servers (shared, reused)
-# RoleBinding in redhat-ods-applications: configmap-patcher-${PROJECT} per namespace
+# Configmap-patcher:
+#   ClusterRole: configmap-patcher-ingress-reader (shared)
+#   ClusterRoleBinding: configmap-patcher-ingress-reader-${PROJECT} per namespace
+#   Role in redhat-ods-applications: configmap-patcher-mcp-servers (shared)
+#   RoleBinding in redhat-ods-applications: configmap-patcher-${PROJECT} per namespace
+#
+# MLflow (per namespace): Role and RoleBinding pipeline-runner-dspa-mlflow so
+#   ServiceAccount pipeline-runner-dspa can access mlflow.kubeflow.org resources.
 #
 # Usage: setup-rbac.sh [--dry-run] <number_of_users>
 # Env:   CUSTOM_PROJECT  Project/namespace prefix (default: llama-stack-demo)
@@ -69,7 +73,7 @@ if [[ "$DRY_RUN" -eq 0 ]]; then
   fi
 fi
 
-echo "Creating configmap-patcher RBAC for ${NUM_USERS} namespace(s)..."
+echo "Creating configmap-patcher and MLflow RBAC for ${NUM_USERS} namespace(s)..."
 
 # Single shared ClusterRole (ingress read)
 if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -114,7 +118,7 @@ for (( i = 1; i <= NUM_USERS; i++ )); do
   RB_NAME="configmap-patcher-${PROJECT}"
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "  Would create ClusterRoleBinding ${CRB_NAME}, RoleBinding ${RB_NAME} in ${ODS_NS} for ${PROJECT}"
+    echo "  Would create ClusterRoleBinding ${CRB_NAME}, RoleBinding ${RB_NAME} in ${ODS_NS}, MLflow Role+RoleBinding in ${PROJECT}"
     continue
   fi
 
@@ -156,6 +160,47 @@ subjects:
     namespace: ${PROJECT}
 EOF
 
+  # MLflow Role in user namespace (pipeline-runner-dspa access to mlflow.kubeflow.org resources)
+  run oc apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pipeline-runner-dspa-mlflow
+  namespace: ${PROJECT}
+rules:
+- apiGroups:
+  - mlflow.kubeflow.org
+  resources:
+  - experiments
+  - registeredmodels
+  - jobs
+  - runs
+  verbs:
+  - get
+  - list
+  - create
+  - update
+  - patch
+  - delete
+EOF
+
+  # MLflow RoleBinding in user namespace
+  run oc apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pipeline-runner-dspa-mlflow
+  namespace: ${PROJECT}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pipeline-runner-dspa-mlflow
+subjects:
+- kind: ServiceAccount
+  name: pipeline-runner-dspa
+  namespace: ${PROJECT}
+EOF
+
   echo "  Created RBAC for ${PROJECT}"
 
   # Annotate the namespace so the OTel Operator injects Python auto-instrumentation
@@ -172,5 +217,5 @@ echo ""
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "Dry-run complete. Run without --dry-run to apply."
 else
-  echo "Done. configmap-patcher RBAC is pre-created for workshop namespaces."
+  echo "Done. configmap-patcher and MLflow RBAC are pre-created for workshop namespaces."
 fi

@@ -223,7 +223,7 @@ LAB_USER=<YOUR_USER>
 
 You can use this script to assign a user to a node.
 
-**Optional:** set the type of instance to assign with `export INSTANCE_TYPE="g5.4xlarge"`
+**Optional:** set the type of instance to assign with `export INSTANCE_TYPE="g5.2xlarge"`
 
 ```sh
 ./scripts/assign-node-to-user.sh ${LAB_USER}

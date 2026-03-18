@@ -18,7 +18,7 @@ usage() {
   echo "  --summary        Output only a one-line summary (for use when called from other scripts)." >&2
   echo "  --silent         Suppress all output (completely quiet)." >&2
   echo "  number_of_users  Number of users (nodes to assign)." >&2
-  echo "  instance_type    Node instance type (default: g5.4xlarge)." >&2
+  echo "  instance_type    Node instance type (default: g5.2xlarge)." >&2
   echo "" >&2
   echo "Optional env: CUSTOM_LABEL (default: assigned), CUSTOM_LABEL_PREFIX (default: llama-stack-demo)" >&2
   exit 1
@@ -39,7 +39,7 @@ if [[ $# -lt 1 ]]; then
 fi
 
 NUM_USERS="$1"
-INSTANCE_TYPE="${2:-g5.4xlarge}"
+INSTANCE_TYPE="${2:-g5.2xlarge}"
 USERS_WITH_NODES=()
 # In summary/silent mode, suppress verbose output
 msg() { [[ "$SUMMARY" -eq 0 ]] && [[ "$SILENT" -eq 0 ]] && echo "$@" || true; }

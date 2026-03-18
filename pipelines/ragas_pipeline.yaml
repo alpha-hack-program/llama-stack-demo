@@ -2,36 +2,69 @@
 # Name: ragas-evaluation-pipeline
 # Description: Pipeline to generate and evaluate RAGAS datasets from a git repository
 # Inputs:
+#    agent_type: str [Default: 'default']
 #    base_dataset_filename: str [Default: 'base_dataset_small.json']
 #    batch_size: int [Default: 0.0]
-#    embedding_model_id: str [Default: 'sentence-transformers/nomic-ai/nomic-embed-text-v1.5']
+#    evaluation_embedding_model_id: str [Default: 'sentence-transformers/nomic-ai/nomic-embed-text-v1.5']
+#    evaluation_model_id: str [Default: 'qwen3-8b-fp8-dynamic/qwen3-8b-fp8-dynamic']
 #    file_search_max_chunks: int [Default: 5.0]
 #    file_search_max_tokens_per_chunk: int [Default: 512.0]
 #    file_search_score_threshold: float [Default: 0.7]
+#    force_file_search: bool [Default: False]
 #    git_context: str [Default: 'materials/datasets']
 #    git_ref: str [Default: 'next']
 #    git_repo: str [Default: 'alpha-hack-program/llama-stack-demo']
-#    instructions: str [Default: '']
-#    max_wait_seconds: int [Default: 900.0]
+#    instructions: str [Default: 'You are a helpful assistant that can answer questions about the documents in the vector store.']
 #    metrics: str [Default: 'answer_relevancy,faithfulness,context_precision,context_recall']
-#    mode: str [Default: 'inline']
-#    model_id: str [Default: 'llama-3-1-8b-w4a16/llama-3-1-8b-w4a16']
-#    poll_interval: int [Default: 5.0]
+#    mlflow_experiment_name: str [Default: 'ragas-scoring-experiment']
+#    mlflow_insecure_tls: bool [Default: False]
+#    mlflow_tracking_uri: str [Default: 'https://mlflow.redhat-ods-applications.svc.cluster.local:8443']
+#    mlflow_workspace: str [Default: '']
+#    model_id: str [Default: 'qwen3-8b-fp8-dynamic/qwen3-8b-fp8-dynamic']
+#    pattern: str [Default: 'simple']
+#    ranker: str [Default: 'default']
 #    retrieval_mode: str [Default: 'vector']
 #    timeout: int [Default: 600.0]
 #    tools: str [Default: 'all']
 #    vector_store_name: str [Default: '']
 components:
+  comp-create-mlflow-experiment:
+    executorLabel: exec-create-mlflow-experiment
+    inputDefinitions:
+      parameters:
+        mlflow_experiment_name:
+          description: Name of the experiment to create or reuse.
+          parameterType: STRING
+        mlflow_insecure_tls:
+          description: If True, skip TLS verification (for self-signed certs).
+          parameterType: BOOLEAN
+        mlflow_tracking_uri:
+          description: Validated tracking URI from verify_mlflow_tracking output.
+          parameterType: STRING
+        mlflow_tracking_uri_param:
+          description: Pipeline-level tracking URI (fallback when upstream output
+            empty).
+          parameterType: STRING
+        mlflow_workspace:
+          description: 'Workspace name (fallback). In K8s, defaults to pod namespace;
+
+            MLFLOW_WORKSPACE env var supersedes.'
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRING
   comp-discover-mcp-tools:
     executorLabel: exec-discover-mcp-tools
     inputDefinitions:
       parameters:
         tools:
           defaultValue: ''
-          description: "MCP tools filter. Options:\n- \"\" (empty): Return empty list\
-            \ (no MCP tools)\n- \"all\": Discover and return all available MCP tools\n\
-            - \"tool1,tool2\": Comma-separated list of specific MCP tool names\n \
-            \ (e.g., \"cluster-insights,compatibility-engine\")"
+          description: "MCP tools filter. Options:\n- \"\" (empty) or \"none\": Return\
+            \ empty list (no MCP tools; only file_search will be used)\n- \"all\"\
+            : Discover and return all available MCP tools\n- \"tool1,tool2\": Comma-separated\
+            \ list of specific MCP tool names\n  (e.g., \"cluster-insights,compatibility-engine\"\
+            )"
           isOptional: true
           parameterType: STRING
     outputDefinitions:
@@ -48,6 +81,11 @@ components:
             schemaVersion: 0.0.1
           description: Input artifact containing the base dataset JSON
       parameters:
+        agent_type:
+          defaultValue: default
+          description: 'Agent backend: "default" (Llama Stack Responses API) or "lang-graph"'
+          isOptional: true
+          parameterType: STRING
         file_search_max_chunks:
           defaultValue: 5.0
           description: 'Max number of chunks to retrieve (OpenAI: max_num_results)'
@@ -63,6 +101,12 @@ components:
           description: "Min score for returned results (0\u20131)"
           isOptional: true
           parameterType: NUMBER_DOUBLE
+        force_file_search:
+          defaultValue: false
+          description: If True, pre-fetch RAG chunks and inject as context (no file_search
+            tool)
+          isOptional: true
+          parameterType: BOOLEAN
         instructions:
           defaultValue: ''
           description: System prompt/instructions for the model (optional)
@@ -75,6 +119,17 @@ components:
           parameterType: STRING
         model_id:
           description: Model identifier to use for inference
+          parameterType: STRING
+        pattern:
+          defaultValue: simple
+          description: 'Execution pattern: "simple" (single call) or "plan_execute"
+            (planner then executor)'
+          isOptional: true
+          parameterType: STRING
+        ranker:
+          defaultValue: default
+          description: Ranker to use for scoring retrieved chunks (e.g. "default")
+          isOptional: true
           parameterType: STRING
         retrieval_mode:
           defaultValue: vector
@@ -117,6 +172,37 @@ components:
           artifactType:
             schemaTitle: system.Dataset
             schemaVersion: 0.0.1
+  comp-log-mlflow-metrics:
+    executorLabel: exec-log-mlflow-metrics
+    inputDefinitions:
+      artifacts:
+        evaluation_results_input:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+          description: Evaluation results artifact from run_ragas_evaluation.
+      parameters:
+        experiment_id:
+          description: MLflow experiment ID from create_mlflow_experiment.
+          parameterType: STRING
+        mlflow_insecure_tls:
+          description: If True, skip TLS verification.
+          parameterType: BOOLEAN
+        mlflow_tracking_uri:
+          description: Tracking URI from verify_mlflow_tracking output.
+          parameterType: STRING
+        mlflow_tracking_uri_param:
+          description: Pipeline-level tracking URI (fallback).
+          parameterType: STRING
+        mlflow_workspace:
+          description: 'Workspace name (fallback). In K8s, defaults to pod namespace;
+
+            MLFLOW_WORKSPACE env var supersedes.'
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRING
   comp-resolve-vector-store:
     executorLabel: exec-resolve-vector-store
     inputDefinitions:
@@ -143,14 +229,17 @@ components:
           description: RAGAS evaluate() batch size (0 = None, no batching)
           isOptional: true
           parameterType: NUMBER_INTEGER
-        embedding_model_id:
-          description: Embedding model identifier
+        evaluation_embedding_model_id:
+          description: Embedding model identifier for RAGAS metrics (e.g. answer_relevancy)
+          parameterType: STRING
+        evaluation_model_id:
+          description: 'LLM model identifier for RAGAS scoring (judge); can differ
+            from
+
+            the model used to generate the dataset'
           parameterType: STRING
         metrics:
           description: Comma-separated list of RAGAS metrics to compute
-          parameterType: STRING
-        model_id:
-          description: LLM model identifier for scoring (judge)
           parameterType: STRING
         show_progress:
           defaultValue: true
@@ -172,8 +261,139 @@ components:
           artifactType:
             schemaTitle: system.Dataset
             schemaVersion: 0.0.1
+  comp-verify-mlflow-tracking:
+    executorLabel: exec-verify-mlflow-tracking
+    inputDefinitions:
+      parameters:
+        mlflow_insecure_tls:
+          defaultValue: false
+          description: If True, skip TLS verification (for self-signed certs).
+          isOptional: true
+          parameterType: BOOLEAN
+        mlflow_tracking_uri:
+          defaultValue: https://mlflow.redhat-ods-applications.svc.cluster.local:8443
+          description: 'MLflow tracking server URL (e.g.,
+
+            https://mlflow.redhat-ods-applications.svc.cluster.local:8443).
+
+            If empty, uses MLFLOW_TRACKING_URI env var.'
+          isOptional: true
+          parameterType: STRING
+        mlflow_workspace:
+          defaultValue: ''
+          description: 'Workspace name (fallback). When running in K8s, workspace
+
+            defaults to pod namespace; MLFLOW_WORKSPACE env var supersedes.'
+          isOptional: true
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRING
 deploymentSpec:
   executors:
+    exec-create-mlflow-experiment:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - create_mlflow_experiment
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'mlflow>=3.6.0,<3.7.0'\
+          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.15.2'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef create_mlflow_experiment(\n    mlflow_tracking_uri: str,\n  \
+          \  mlflow_experiment_name: str,\n    mlflow_workspace: str,\n    mlflow_insecure_tls:\
+          \ bool,\n    mlflow_tracking_uri_param: str,\n) -> str:\n    \"\"\"\n  \
+          \  Create an MLflow experiment after MLflow connectivity has been verified.\n\
+          \n    Should run after verify_mlflow_tracking. All input parameters are\
+          \ required;\n    raises ValueError if any parameter is not passed or is\
+          \ empty.\n\n    Tags the experiment with mlflow.experimentKind=custom_model_development\n\
+          \    (for Red Hat ODSC MLflow UI compatibility).\n\n    Args:\n        mlflow_tracking_uri:\
+          \ Validated tracking URI from verify_mlflow_tracking output.\n        mlflow_experiment_name:\
+          \ Name of the experiment to create or reuse.\n        mlflow_workspace:\
+          \ Workspace name (fallback). In K8s, defaults to pod namespace;\n      \
+          \      MLFLOW_WORKSPACE env var supersedes.\n        mlflow_insecure_tls:\
+          \ If True, skip TLS verification (for self-signed certs).\n        mlflow_tracking_uri_param:\
+          \ Pipeline-level tracking URI (fallback when upstream output empty).\n\n\
+          \    Returns:\n        The experiment ID.\n    \"\"\"\n    import os\n\n\
+          \    from mlflow.tracking.request_header.abstract_request_header_provider\
+          \ import RequestHeaderProvider\n    from mlflow.tracking.request_header.registry\
+          \ import _request_header_provider_registry\n    from mlflow.tracking import\
+          \ MlflowClient\n\n    if mlflow_insecure_tls is None:\n        raise ValueError(\"\
+          mlflow_insecure_tls is required\")\n\n    uri = (\n        (mlflow_tracking_uri\
+          \ or \"\").strip()\n        or (mlflow_tracking_uri_param or \"\").strip()\n\
+          \        or os.environ.get(\"MLFLOW_TRACKING_URI\", \"\").strip()\n    )\n\
+          \    if not uri:\n        raise ValueError(\"mlflow_tracking_uri or mlflow_tracking_uri_param\
+          \ is required\")\n\n    experiment_name = (mlflow_experiment_name or \"\"\
+          ).strip()\n    if not experiment_name:\n        raise ValueError(\"mlflow_experiment_name\
+          \ is required\")\n\n    # Workspace must match pod namespace when running\
+          \ in K8s; MLFLOW_WORKSPACE env var supersedes\n    workspace = os.environ.get(\"\
+          MLFLOW_WORKSPACE\", \"\").strip()\n    if not workspace:\n        namespace_path\
+          \ = os.environ.get(\"NAMESPACE_PATH\", \"/var/run/secrets/kubernetes.io/serviceaccount/namespace\"\
+          )\n        try:\n            with open(namespace_path, \"r\", encoding=\"\
+          utf-8\") as f:\n                workspace = f.read().strip()\n        except\
+          \ FileNotFoundError:\n            pass\n    if not workspace:\n        workspace\
+          \ = (mlflow_workspace or \"\").strip()\n    if not workspace:\n        raise\
+          \ ValueError(\"mlflow_workspace is required (or set MLFLOW_WORKSPACE, or\
+          \ run in K8s where pod namespace is used)\")\n\n    os.environ[\"MLFLOW_WORKSPACE\"\
+          ] = workspace\n\n    class _WorkspaceHeaderProvider(RequestHeaderProvider):\n\
+          \        def in_context(self):\n            return bool(os.environ.get(\"\
+          MLFLOW_WORKSPACE\"))\n\n        def request_headers(self):\n           \
+          \ return {\"X-MLFLOW-WORKSPACE\": os.environ[\"MLFLOW_WORKSPACE\"]}\n\n\
+          \    _request_header_provider_registry.register(_WorkspaceHeaderProvider)\n\
+          \n    if mlflow_insecure_tls:\n        os.environ[\"MLFLOW_TRACKING_INSECURE_TLS\"\
+          ] = \"true\"\n\n    # Use K8s service account token when running in OpenShift\
+          \ (e.g., Red Hat ODSC MLflow)\n    if not os.environ.get(\"MLFLOW_TRACKING_TOKEN\"\
+          ):\n        token_path = os.environ.get(\"TOKEN_PATH\", \"/var/run/secrets/kubernetes.io/serviceaccount/token\"\
+          )\n        try:\n            with open(token_path, \"r\", encoding=\"utf-8\"\
+          ) as f:\n                token = f.read().strip()\n            if token:\n\
+          \                os.environ[\"MLFLOW_TRACKING_TOKEN\"] = token\n       \
+          \         print(\"[CREATE] Using K8s service account token for MLflow auth\"\
+          )\n        except FileNotFoundError:\n            pass  # Not running in\
+          \ K8s; token not required\n        except Exception as e:\n            print(f\"\
+          [WARN] Could not read K8s token from {token_path}: {e}\")\n\n    print(f\"\
+          [CREATE] Creating MLflow experiment: {experiment_name}\")\n\n    default_experiment_tag_key\
+          \ = \"mlflow.experimentKind\"\n    default_experiment_tag_value = \"custom_model_development\"\
+          \n\n    try:\n        client = MlflowClient(tracking_uri=uri)\n\n      \
+          \  existing = client.get_experiment_by_name(experiment_name)\n        if\
+          \ existing:\n            experiment_id = existing.experiment_id\n      \
+          \      print(f\"[OK] Experiment already exists: {experiment_name} (id={experiment_id})\"\
+          )\n        else:\n            experiment_id = client.create_experiment(experiment_name)\n\
+          \            print(f\"[OK] Created experiment: {experiment_name} (id={experiment_id})\"\
+          )\n\n        client.set_experiment_tag(experiment_id, default_experiment_tag_key,\
+          \ default_experiment_tag_value)\n        print(f\"[OK] Tagged experiment\
+          \ with {default_experiment_tag_key}={default_experiment_tag_value}\")\n\n\
+          \        return experiment_id\n    except Exception as e:\n        print(f\"\
+          [ERROR] Failed to create MLflow experiment: {e}\")\n        raise ValueError(f\"\
+          Failed to create MLflow experiment '{experiment_name}': {e}\") from e\n\n"
+        image: quay.io/modh/odh-pipeline-runtime-pytorch-cuda-py312-ubi9@sha256:72ff2381e5cb24d6f549534cb74309ed30e92c1ca80214669adb78ad30c5ae12
+        resources:
+          cpuLimit: 1.0
+          cpuRequest: 0.1
+          memoryLimit: 0.536870912
+          memoryRequest: 0.268435456
+          resourceCpuLimit: '1'
+          resourceCpuRequest: 100m
+          resourceMemoryLimit: 512Mi
+          resourceMemoryRequest: 256Mi
     exec-discover-mcp-tools:
       container:
         args:
@@ -186,7 +406,7 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'llama-stack-client==0.3.5'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'llama-stack-client==0.4.2'\
           \ 'httpx'  &&  python3 -m pip install --quiet --no-warn-script-location\
           \ 'kfp==2.15.2' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
           3.9\"' && \"$0\" \"$@\"\n"
@@ -203,24 +423,26 @@ deploymentSpec:
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef discover_mcp_tools(\n    tools: str = \"\",\n) -> str:\n    \"\
           \"\"\n    Discover MCP tools from Llama Stack server.\n\n    Args:\n   \
-          \     tools: MCP tools filter. Options:\n            - \"\" (empty): Return\
-          \ empty list (no MCP tools)\n            - \"all\": Discover and return\
-          \ all available MCP tools\n            - \"tool1,tool2\": Comma-separated\
-          \ list of specific MCP tool names\n              (e.g., \"cluster-insights,compatibility-engine\"\
+          \     tools: MCP tools filter. Options:\n            - \"\" (empty) or \"\
+          none\": Return empty list (no MCP tools; only file_search will be used)\n\
+          \            - \"all\": Discover and return all available MCP tools\n  \
+          \          - \"tool1,tool2\": Comma-separated list of specific MCP tool\
+          \ names\n              (e.g., \"cluster-insights,compatibility-engine\"\
           )\n\n    Returns:\n        JSON string containing list of MCP tool configurations\n\
           \    \"\"\"\n    import json\n    import os\n\n    import httpx\n    from\
-          \ llama_stack_client import LlamaStackClient\n\n    if not tools or not\
-          \ tools.strip():\n        print(\"[INFO] No MCP tools requested, returning\
-          \ empty list\")\n        return json.dumps([])\n\n    tool_filter = tools.strip()\n\
-          \n    llama_stack_host = os.environ.get(\"LLAMA_STACK_HOST\")\n    llama_stack_port\
-          \ = os.environ.get(\"LLAMA_STACK_PORT\")\n    llama_stack_secure = os.environ.get(\"\
-          LLAMA_STACK_SECURE\", \"\").lower() in (\"true\", \"1\", \"yes\")\n\n  \
-          \  print(f\"LLAMA_STACK_HOST: {llama_stack_host}\")\n    print(f\"LLAMA_STACK_PORT:\
-          \ {llama_stack_port}\")\n    print(f\"LLAMA_STACK_SECURE: {llama_stack_secure}\"\
-          )\n\n    if not llama_stack_host:\n        raise ValueError(\"LLAMA_STACK_HOST\
-          \ environment variable must be set\")\n    if not llama_stack_port:\n  \
-          \      raise ValueError(\"LLAMA_STACK_PORT environment variable must be\
-          \ set\")\n\n    base_url = f\"{'https' if llama_stack_secure else 'http'}://{llama_stack_host}:{llama_stack_port}\"\
+          \ llama_stack_client import LlamaStackClient\n\n    tool_filter = (tools\
+          \ or \"\").strip()\n    if not tool_filter or tool_filter.lower() == \"\
+          none\":\n        print(\"[INFO] No MCP tools requested (tools=%r), returning\
+          \ empty list\" % (tools,))\n        return json.dumps([])\n\n    llama_stack_host\
+          \ = os.environ.get(\"LLAMA_STACK_HOST\")\n    llama_stack_port = os.environ.get(\"\
+          LLAMA_STACK_PORT\")\n    llama_stack_secure = os.environ.get(\"LLAMA_STACK_SECURE\"\
+          , \"\").lower() in (\"true\", \"1\", \"yes\")\n\n    print(f\"LLAMA_STACK_HOST:\
+          \ {llama_stack_host}\")\n    print(f\"LLAMA_STACK_PORT: {llama_stack_port}\"\
+          )\n    print(f\"LLAMA_STACK_SECURE: {llama_stack_secure}\")\n\n    if not\
+          \ llama_stack_host:\n        raise ValueError(\"LLAMA_STACK_HOST environment\
+          \ variable must be set\")\n    if not llama_stack_port:\n        raise ValueError(\"\
+          LLAMA_STACK_PORT environment variable must be set\")\n\n    base_url = f\"\
+          {'https' if llama_stack_secure else 'http'}://{llama_stack_host}:{llama_stack_port}\"\
           \n    print(f\"LLAMA_STACK_BASE_URL: {base_url}\")\n\n    http_client =\
           \ httpx.Client(verify=False, timeout=60)\n    client = LlamaStackClient(base_url=base_url,\
           \ http_client=http_client)\n\n    print(f\"\\n[SEARCH] Discovering MCP tools\
@@ -279,8 +501,8 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'llama-stack-client==0.3.5'\
-          \ 'httpx'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ python3 -m pip install --quiet --no-warn-script-location 'llama-stack-client==0.4.2'\
+          \ 'httpx' 'portazgo==0.2.0'  &&  python3 -m pip install --quiet --no-warn-script-location\
           \ 'kfp==2.15.2' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
           3.9\"' && \"$0\" \"$@\"\n"
         - sh
@@ -298,12 +520,15 @@ deploymentSpec:
           \    model_id: str,\n    vector_store_id: str,\n    ragas_dataset_output:\
           \ Output[Dataset],\n    mcp_tools_json: str = \"[]\",\n    instructions:\
           \ str = \"\",\n    timeout: int = 300,\n    retrieval_mode: str = \"vector\"\
-          , # vector, text, hybrid\n    file_search_max_chunks: int = 5,\n    file_search_score_threshold:\
-          \ float = 0.7,\n    file_search_max_tokens_per_chunk: int = 512,\n):\n \
-          \   \"\"\"\n    Generate RAGAS-compatible dataset with RAG answers and contexts.\n\
-          \n    Uses Llama Stack's Responses API to query the RAG system and generate\n\
-          \    answers with retrieved contexts for each question in the base dataset.\n\
-          \n    Args:\n        base_dataset_input: Input artifact containing the base\
+          ,  # vector, text, hybrid\n    file_search_max_chunks: int = 5,\n    file_search_score_threshold:\
+          \ float = 0.7,\n    file_search_max_tokens_per_chunk: int = 512,\n    ranker:\
+          \ str = \"default\",\n    force_file_search: bool = False,\n    agent_type:\
+          \ str = \"default\",  # default | lang-graph\n    pattern: str = \"simple\"\
+          ,  # simple | plan_execute\n):\n    \"\"\"\n    Generate RAGAS-compatible\
+          \ dataset with RAG answers and contexts.\n\n    Uses portazgo's Agent (Llama\
+          \ Stack Responses API) to query the RAG system\n    and generate answers\
+          \ with retrieved contexts for each question in the base dataset.\n\n   \
+          \ Args:\n        base_dataset_input: Input artifact containing the base\
           \ dataset JSON\n        model_id: Model identifier to use for inference\n\
           \        vector_store_id: Vector store ID containing documents\n       \
           \ ragas_dataset_output: Output artifact for the RAGAS dataset\n        mcp_tools_json:\
@@ -313,180 +538,56 @@ deploymentSpec:
           \ to use (vector, text, hybrid)\n        file_search_max_chunks: Max number\
           \ of chunks to retrieve (OpenAI: max_num_results)\n        file_search_score_threshold:\
           \ Min score for returned results (0\u20131)\n        file_search_max_tokens_per_chunk:\
-          \ Max tokens per chunk in results\n    \"\"\"\n    import json\n    import\
-          \ os\n    from typing import Any, Dict, List\n\n    import httpx\n    from\
-          \ llama_stack_client import LlamaStackClient\n\n    def _serialize_for_json(val:\
-          \ Any) -> Any:\n        \"\"\"Convert a value to something JSON-serializable.\"\
-          \"\"\n        if val is None or isinstance(val, (bool, int, float, str)):\n\
-          \            return val\n        if isinstance(val, (dict, list)):\n   \
-          \         return val\n        if hasattr(val, \"__dict__\"):\n         \
-          \   return {k: _serialize_for_json(v) for k, v in val.__dict__.items()}\n\
-          \        return str(val)\n\n    def _extract_tool_calls(response: Any) ->\
-          \ List[Dict[str, Any]]:\n        \"\"\"Extract tool calls from Llama Stack\
-          \ response (output list, then turns or tool_calls). Returns list of {tool_name,\
-          \ arguments, response}.\"\"\"\n        out: List[Dict[str, Any]] = []\n\
-          \        if hasattr(response, \"output\") and isinstance(response.output,\
-          \ list):\n            for item in response.output:\n                type_\
-          \ = getattr(item, \"type\", None)\n                if type_ == \"file_search_call\"\
-          :\n                    queries = getattr(item, \"queries\", None) or []\n\
-          \                    results = getattr(item, \"results\", None) or []\n\
-          \                    result_texts = [getattr(r, \"text\", \"\") or \"\"\
-          \ for r in results]\n                    out.append({\n                \
-          \        \"tool_name\": \"file_search\",\n                        \"arguments\"\
-          : {\"queries\": list(queries)},\n                        \"response\": result_texts,\n\
-          \                    })\n                elif type_ and \"mcp\" in str(type_).lower()\
-          \ and type_ != \"mcp_list_tools\":\n                    name = getattr(item,\
-          \ \"tool_name\", None) or getattr(item, \"name\", None) or getattr(item,\
-          \ \"server_label\", None) or \"mcp\"\n                    args = getattr(item,\
-          \ \"arguments\", None) or getattr(item, \"args\", None) or {}\n        \
-          \            # Llama Stack MCP call uses \"output\" for the tool result\
-          \ (not \"response\" or \"result\")\n                    resp = getattr(item,\
-          \ \"output\", None) or getattr(item, \"response\", None) or getattr(item,\
-          \ \"result\", None)\n                    if not isinstance(args, dict):\n\
-          \                        try:\n                            args = json.loads(args)\
-          \ if isinstance(args, str) else {}\n                        except Exception:\n\
-          \                            args = {} if args is None else {\"raw\": str(args)}\n\
-          \                    out.append({\"tool_name\": str(name), \"arguments\"\
-          : args, \"response\": _serialize_for_json(resp)})\n            if out:\n\
-          \                return out\n        if hasattr(response, \"turns\") and\
-          \ response.turns:\n            for turn in response.turns:\n           \
-          \     if hasattr(turn, \"tool_calls\") and turn.tool_calls:\n          \
-          \          for tc in turn.tool_calls:\n                        name = getattr(tc,\
-          \ \"tool_name\", None) or (tc.__dict__.get(\"tool_name\") if hasattr(tc,\
-          \ \"__dict__\") else \"unknown\")\n                        args = getattr(tc,\
-          \ \"arguments\", None) or (tc.__dict__.get(\"arguments\") if hasattr(tc,\
-          \ \"__dict__\") else {})\n                        resp = getattr(tc, \"\
-          response\", None) or (tc.__dict__.get(\"response\") if hasattr(tc, \"__dict__\"\
-          ) else None)\n                        if isinstance(args, dict):\n     \
-          \                       pass\n                        else:\n          \
-          \                  try:\n                                args = json.loads(args)\
-          \ if isinstance(args, str) else (args or {})\n                         \
-          \   except Exception:\n                                args = {} if args\
-          \ is None else {\"raw\": str(args)}\n                        out.append({\"\
-          tool_name\": name, \"arguments\": args, \"response\": _serialize_for_json(resp)})\n\
-          \                if hasattr(turn, \"steps\") and turn.steps:\n         \
-          \           for step in turn.steps:\n                        name = getattr(step,\
-          \ \"tool_name\", None) or (getattr(step, \"__dict__\", {}).get(\"tool_name\"\
-          ) or \"unknown\")\n                        args = getattr(step, \"tool_args\"\
-          , None) or (getattr(step, \"__dict__\", {}).get(\"tool_args\") or {})\n\
-          \                        resp = getattr(step, \"tool_response\", None) or\
-          \ (getattr(step, \"__dict__\", {}).get(\"tool_response\"))\n           \
-          \             if not isinstance(args, dict):\n                         \
-          \   try:\n                                args = json.loads(args) if isinstance(args,\
-          \ str) else {}\n                            except Exception:\n        \
-          \                        args = {} if args is None else {\"raw\": str(args)}\n\
-          \                        out.append({\"tool_name\": name, \"arguments\"\
-          : args, \"response\": _serialize_for_json(resp)})\n        elif hasattr(response,\
-          \ \"tool_calls\") and response.tool_calls:\n            for tc in response.tool_calls:\n\
-          \                d = tc.__dict__ if hasattr(tc, \"__dict__\") else {}\n\
-          \                name = d.get(\"tool_name\", \"unknown\")\n            \
-          \    args = d.get(\"arguments\", {})\n                if not isinstance(args,\
-          \ dict):\n                    try:\n                        args = json.loads(args)\
-          \ if isinstance(args, str) else {}\n                    except Exception:\n\
-          \                        args = {} if args is None else {\"raw\": str(args)}\n\
-          \                out.append({\"tool_name\": name, \"arguments\": args, \"\
-          response\": _serialize_for_json(d.get(\"response\"))})\n        return out\n\
-          \n    llama_stack_host = os.environ.get(\"LLAMA_STACK_HOST\")\n    llama_stack_port\
-          \ = os.environ.get(\"LLAMA_STACK_PORT\")\n    llama_stack_secure = os.environ.get(\"\
-          LLAMA_STACK_SECURE\", \"\").lower() in (\"true\", \"1\", \"yes\")\n\n  \
-          \  print(f\"LLAMA_STACK_HOST: {llama_stack_host}\")\n    print(f\"LLAMA_STACK_PORT:\
-          \ {llama_stack_port}\")\n    print(f\"LLAMA_STACK_SECURE: {llama_stack_secure}\"\
-          )\n\n    if not llama_stack_host:\n        raise ValueError(\"LLAMA_STACK_HOST\
-          \ environment variable must be set\")\n    if not llama_stack_port:\n  \
-          \      raise ValueError(\"LLAMA_STACK_PORT environment variable must be\
-          \ set\")\n\n    base_url = f\"{'https' if llama_stack_secure else 'http'}://{llama_stack_host}:{llama_stack_port}\"\
+          \ Max tokens per chunk in results\n        ranker: Ranker to use for scoring\
+          \ retrieved chunks (e.g. \"default\")\n        force_file_search: If True,\
+          \ pre-fetch RAG chunks and inject as context (no file_search tool)\n   \
+          \     agent_type: Agent backend: \"default\" (Llama Stack Responses API)\
+          \ or \"lang-graph\"\n        pattern: Execution pattern: \"simple\" (single\
+          \ call) or \"plan_execute\" (planner then executor)\n    \"\"\"\n    import\
+          \ json\n    import os\n\n    import httpx\n    from llama_stack_client import\
+          \ LlamaStackClient\n    from portazgo import Agent\n\n    llama_stack_host\
+          \ = os.environ.get(\"LLAMA_STACK_HOST\")\n    llama_stack_port = os.environ.get(\"\
+          LLAMA_STACK_PORT\")\n    llama_stack_secure = os.environ.get(\"LLAMA_STACK_SECURE\"\
+          , \"\").lower() in (\"true\", \"1\", \"yes\")\n\n    print(f\"LLAMA_STACK_HOST:\
+          \ {llama_stack_host}\")\n    print(f\"LLAMA_STACK_PORT: {llama_stack_port}\"\
+          )\n    print(f\"LLAMA_STACK_SECURE: {llama_stack_secure}\")\n\n    if not\
+          \ llama_stack_host:\n        raise ValueError(\"LLAMA_STACK_HOST environment\
+          \ variable must be set\")\n    if not llama_stack_port:\n        raise ValueError(\"\
+          LLAMA_STACK_PORT environment variable must be set\")\n\n    base_url = f\"\
+          {'https' if llama_stack_secure else 'http'}://{llama_stack_host}:{llama_stack_port}\"\
           \n    print(f\"LLAMA_STACK_BASE_URL: {base_url}\")\n\n    http_client =\
           \ httpx.Client(verify=False, timeout=timeout)\n    client = LlamaStackClient(base_url=base_url,\
           \ http_client=http_client)\n\n    print(f\"\\n[LOAD] Loading base dataset\
           \ from artifact: {base_dataset_input.path}\")\n    with open(base_dataset_input.path,\
-          \ \"r\", encoding=\"utf-8\") as f:\n        base_dataset_json = f.read()\n\
-          \    dataset = json.loads(base_dataset_json)\n    print(f\"[OK] Loaded {len(dataset)}\
-          \ questions\")\n\n    print(\"\\n[CONFIG] Configuring tools...\")\n    tools_list:\
-          \ List[Dict[str, Any]] = []\n\n    if vector_store_id:\n        file_search_tool:\
-          \ Dict[str, Any] = {\n            \"type\": \"file_search\",\n         \
-          \   \"vector_store_ids\": [vector_store_id],\n            \"file_search\"\
-          : {\n                \"retrieval_mode\": retrieval_mode,\n             \
-          \   \"max_chunks\": file_search_max_chunks,\n                \"score_threshold\"\
-          : file_search_score_threshold,\n                \"max_tokens_per_chunk\"\
-          : file_search_max_tokens_per_chunk,\n            },\n        }\n       \
-          \ tools_list.append(file_search_tool)\n        print(\n            f\" \
-          \  [OK] Added file_search tool (vector store: {vector_store_id}, \"\n  \
-          \          f\"max_chunks={file_search_max_chunks}, score_threshold={file_search_score_threshold},\
+          \ \"r\", encoding=\"utf-8\") as f:\n        base_dataset = json.load(f)\n\
+          \    print(f\"[OK] Loaded {len(base_dataset)} questions\")\n\n    mcp_tools\
+          \ = json.loads(mcp_tools_json) if mcp_tools_json else []\n    max_chunks_int\
+          \ = int(file_search_max_chunks)\n\n    print(f\"\\n[CONFIG] Using portazgo\
+          \ Agent (type={agent_type}, pattern={pattern})...\")\n    if vector_store_id:\n\
+          \        print(\n            f\"   [OK] file_search (vector store: {vector_store_id},\
+          \ \"\n            f\"retrieval_mode={retrieval_mode}, ranker={ranker}, \"\
+          \n            f\"max_chunks={max_chunks_int}, score_threshold={file_search_score_threshold},\
           \ \"\n            f\"max_tokens_per_chunk={file_search_max_tokens_per_chunk})\"\
-          \n        )\n\n    mcp_tools = json.loads(mcp_tools_json) if mcp_tools_json\
-          \ else []\n    if mcp_tools:\n        tools_list.extend(mcp_tools)\n   \
-          \     print(f\"   [OK] Added {len(mcp_tools)} MCP tool(s)\")\n\n    print(f\"\
-          \\n[INFO] Total tools configured: {len(tools_list)}\")\n    for tool in\
-          \ tools_list:\n        tool_type = tool.get(\"type\", \"unknown\")\n   \
-          \     if tool_type == \"mcp\":\n            print(f\"   - MCP: {tool.get('server_label')}\
-          \ ({tool.get('server_url')})\")\n        elif tool_type == \"file_search\"\
-          :\n            fs_opts = tool.get(\"file_search\") or {}\n            print(f\"\
-          \   - File Search: {tool.get('vector_store_ids')} options={fs_opts}\")\n\
-          \        else:\n            print(f\"   - {tool_type}\")\n\n    if instructions\
-          \ and instructions.strip():\n        print(f\"\\n[INFO] System Instructions:\
-          \ {instructions[:100]}{'...' if len(instructions) > 100 else ''}\")\n\n\
-          \    print(f\"\\n[PROCESS] Processing questions using Responses API...\"\
-          )\n    print(f\"Model: {model_id}\")\n    print(f\"Vector Store: {vector_store_id}\\\
-          n\")\n\n    ragas_dataset = []\n    error_count = 0\n    errors: List[str]\
-          \ = []\n\n    for i, item in enumerate(dataset, 1):\n        question_id\
-          \ = item.get(\"id\", f\"q_{i}\")\n        question = item[\"question\"]\n\
-          \        ground_truth = item.get(\"ground_truth\", \"\")\n\n        print(f\"\
-          [{i}/{len(dataset)}] Processing: {question_id}\")\n\n        try:\n    \
-          \        request_config: Dict[str, Any] = {\n                \"model\":\
-          \ model_id,\n                \"input\": question,\n                \"tools\"\
-          : tools_list,\n            }\n            if instructions and instructions.strip():\n\
-          \                request_config[\"instructions\"] = instructions.strip()\n\
-          \            if any(t.get(\"type\") == \"file_search\" for t in tools_list):\n\
-          \                request_config[\"include\"] = [\"file_search_call.results\"\
-          ]\n\n            response = client.responses.create(**request_config)\n\
-          \            answer = getattr(response, \"output_text\", str(response))\n\
-          \n            contexts = []\n            if hasattr(response, \"output\"\
-          ) and isinstance(response.output, list):\n                for output_item\
-          \ in response.output:\n                    if hasattr(output_item, \"results\"\
-          ) and isinstance(output_item.results, list):\n                        for\
-          \ result in output_item.results:\n                            if hasattr(result,\
-          \ \"text\") and result.text:\n                                contexts.append(result.text)\n\
-          \n            tool_calls = _extract_tool_calls(response)\n            ragas_entry\
-          \ = {\n                \"id\": question_id,\n                \"question\"\
-          : question,\n                \"answer\": answer,\n                \"contexts\"\
-          : contexts if contexts else [],\n                \"ground_truth\": ground_truth,\n\
-          \            }\n            if tool_calls:\n                ragas_entry[\"\
-          tool_calls\"] = tool_calls\n                # Append non-file_search tool\
-          \ call responses as contexts for RAGAS\n                for tc in tool_calls:\n\
-          \                    if tc.get(\"tool_name\") != \"file_search\":\n    \
-          \                    resp = tc.get(\"response\")\n                     \
-          \   if resp is not None:\n                            ctx = resp if isinstance(resp,\
-          \ str) else json.dumps(resp, ensure_ascii=False)\n                     \
-          \       ragas_entry[\"contexts\"].append(ctx)\n            print(f\"  [OK]\
-          \ Answer generated ({len(ragas_entry['contexts'])} contexts, {len(tool_calls)}\
-          \ tool call(s))\")\n            if \"difficulty\" in item:\n           \
-          \     ragas_entry[\"difficulty\"] = item[\"difficulty\"]\n            if\
-          \ item.get(\"expected_tool\"):\n                ragas_entry[\"expected_tool\"\
-          ] = item[\"expected_tool\"]\n            if item.get(\"expected_tool_parameters\"\
-          ):\n                ragas_entry[\"expected_tool_parameters\"] = item[\"\
-          expected_tool_parameters\"]\n\n            ragas_dataset.append(ragas_entry)\n\
-          \n        except Exception as e:\n            error_count += 1\n       \
-          \     errors.append(f\"{question_id}: {str(e)}\")\n            print(f\"\
-          \  [ERROR] Error processing {question_id}: {e}\")\n            ragas_dataset.append({\n\
-          \                \"id\": question_id,\n                \"question\": question,\n\
-          \                \"answer\": f\"ERROR: {str(e)}\",\n                \"contexts\"\
-          : [],\n                \"ground_truth\": ground_truth,\n               \
-          \ \"difficulty\": item.get(\"difficulty\", \"unknown\"),\n             \
-          \   \"error\": True,\n            })\n\n    total_questions = len(dataset)\n\
-          \    success_count = total_questions - error_count\n\n    print(f\"\\n[SUMMARY]\
-          \ RAGAS dataset generation summary:\")\n    print(f\"   Total questions:\
-          \ {total_questions}\")\n    print(f\"   Successful: {success_count}\")\n\
-          \    print(f\"   Failed: {error_count}\")\n\n    if error_count == total_questions:\n\
-          \        raise ValueError(\n            f\"All {total_questions} questions\
-          \ failed to process. \"\n            f\"First error: {errors[0] if errors\
-          \ else 'Unknown'}\"\n        )\n    if error_count > total_questions / 2:\n\
-          \        raise ValueError(\n            f\"Too many questions failed: {error_count}/{total_questions}\
-          \ ({error_count*100//total_questions}%). \"\n            f\"Errors: {errors[:5]}{'...'\
-          \ if len(errors) > 5 else ''}\"\n        )\n    if error_count > 0:\n  \
-          \      print(f\"   [WARN] Warning: {error_count} question(s) failed but\
-          \ continuing with {success_count} successful entries\")\n\n    print(\"\\\
-          n[DONE] RAGAS dataset generation complete!\")\n\n    ragas_dataset_json\
-          \ = json.dumps(ragas_dataset, indent=2, ensure_ascii=False)\n    with open(ragas_dataset_output.path,\
+          \n        )\n    if mcp_tools:\n        print(f\"   [OK] Added {len(mcp_tools)}\
+          \ MCP tool(s)\")\n\n    if instructions and instructions.strip():\n    \
+          \    print(f\"\\n[INFO] System Instructions: {instructions[:100]}{'...'\
+          \ if len(instructions) > 100 else ''}\")\n\n    print(f\"\\n[PROCESS] Processing\
+          \ questions via portazgo Agent...\")\n    print(f\"Model: {model_id}\")\n\
+          \    print(f\"Vector Store: {vector_store_id}\\n\")\n\n    agent = Agent(type=agent_type)\n\
+          \    ragas_dataset = agent.generate_ragas_dataset(\n        base_dataset=base_dataset,\n\
+          \        client=client,\n        model_id=model_id,\n        vector_store_id=vector_store_id,\n\
+          \        mcp_tools=mcp_tools,\n        instructions=instructions,\n    \
+          \    ranker=ranker,\n        retrieval_mode=retrieval_mode,\n        file_search_max_chunks=max_chunks_int,\n\
+          \        file_search_score_threshold=file_search_score_threshold,\n    \
+          \    file_search_max_tokens_per_chunk=file_search_max_tokens_per_chunk,\n\
+          \        force_file_search=force_file_search,\n        pattern=pattern,\n\
+          \    )\n\n    success_count = sum(1 for e in ragas_dataset if not e.get(\"\
+          error\"))\n    error_count = len(ragas_dataset) - success_count\n\n    print(f\"\
+          \\n[SUMMARY] RAGAS dataset generation summary:\")\n    print(f\"   Total\
+          \ questions: {len(base_dataset)}\")\n    print(f\"   Successful: {success_count}\"\
+          )\n    print(f\"   Failed: {error_count}\")\n    print(\"\\n[DONE] RAGAS\
+          \ dataset generation complete!\")\n\n    ragas_dataset_json = json.dumps(ragas_dataset,\
+          \ indent=2, ensure_ascii=False)\n    with open(ragas_dataset_output.path,\
           \ \"w\", encoding=\"utf-8\") as f:\n        f.write(ragas_dataset_json)\n\
           \n    print(f\"[OK] Written RAGAS dataset to artifact: {ragas_dataset_output.path}\"\
           )\n\n"
@@ -560,6 +661,113 @@ deploymentSpec:
           resourceCpuRequest: 100m
           resourceMemoryLimit: 512Mi
           resourceMemoryRequest: 256Mi
+    exec-log-mlflow-metrics:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - log_mlflow_metrics
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'mlflow>=3.6.0,<3.7.0'\
+          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.15.2'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef log_mlflow_metrics(\n    evaluation_results_input: Input[Dataset],\n\
+          \    experiment_id: str,\n    mlflow_tracking_uri: str,\n    mlflow_workspace:\
+          \ str,\n    mlflow_insecure_tls: bool,\n    mlflow_tracking_uri_param: str,\n\
+          ) -> str:\n    \"\"\"\n    Read RAGAS evaluation results and log metrics\
+          \ to the MLflow experiment.\n\n    Runs after run_ragas_evaluation. Reads\
+          \ the evaluation results JSON (metrics,\n    dataset_size, valid_entries,\
+          \ model ids, etc.) and logs them as an MLflow run\n    in the experiment\
+          \ created by create_mlflow_experiment.\n\n    Args:\n        evaluation_results_input:\
+          \ Evaluation results artifact from run_ragas_evaluation.\n        experiment_id:\
+          \ MLflow experiment ID from create_mlflow_experiment.\n        mlflow_tracking_uri:\
+          \ Tracking URI from verify_mlflow_tracking output.\n        mlflow_workspace:\
+          \ Workspace name (fallback). In K8s, defaults to pod namespace;\n      \
+          \      MLFLOW_WORKSPACE env var supersedes.\n        mlflow_insecure_tls:\
+          \ If True, skip TLS verification.\n        mlflow_tracking_uri_param: Pipeline-level\
+          \ tracking URI (fallback).\n\n    Returns:\n        The MLflow run ID.\n\
+          \    \"\"\"\n    import json\n    import math\n    import os\n\n    import\
+          \ mlflow\n    from mlflow.tracking.request_header.abstract_request_header_provider\
+          \ import RequestHeaderProvider\n    from mlflow.tracking.request_header.registry\
+          \ import _request_header_provider_registry\n\n    if not experiment_id or\
+          \ not str(experiment_id).strip():\n        raise ValueError(\"experiment_id\
+          \ is required\")\n\n    uri = (\n        (mlflow_tracking_uri or \"\").strip()\n\
+          \        or (mlflow_tracking_uri_param or \"\").strip()\n        or os.environ.get(\"\
+          MLFLOW_TRACKING_URI\", \"\").strip()\n    )\n    if not uri:\n        raise\
+          \ ValueError(\"mlflow_tracking_uri or mlflow_tracking_uri_param is required\"\
+          )\n\n    # Workspace must match pod namespace when running in K8s; MLFLOW_WORKSPACE\
+          \ env var supersedes\n    workspace = os.environ.get(\"MLFLOW_WORKSPACE\"\
+          , \"\").strip()\n    if not workspace:\n        namespace_path = os.environ.get(\"\
+          NAMESPACE_PATH\", \"/var/run/secrets/kubernetes.io/serviceaccount/namespace\"\
+          )\n        try:\n            with open(namespace_path, \"r\", encoding=\"\
+          utf-8\") as f:\n                workspace = f.read().strip()\n        except\
+          \ FileNotFoundError:\n            pass\n    if not workspace:\n        workspace\
+          \ = (mlflow_workspace or \"\").strip()\n    if not workspace:\n        raise\
+          \ ValueError(\"mlflow_workspace is required (or set MLFLOW_WORKSPACE, or\
+          \ run in K8s where pod namespace is used)\")\n\n    if mlflow_insecure_tls\
+          \ is None:\n        raise ValueError(\"mlflow_insecure_tls is required\"\
+          )\n\n    os.environ[\"MLFLOW_WORKSPACE\"] = workspace\n\n    class _WorkspaceHeaderProvider(RequestHeaderProvider):\n\
+          \        def in_context(self):\n            return bool(os.environ.get(\"\
+          MLFLOW_WORKSPACE\"))\n\n        def request_headers(self):\n           \
+          \ return {\"X-MLFLOW-WORKSPACE\": os.environ[\"MLFLOW_WORKSPACE\"]}\n\n\
+          \    _request_header_provider_registry.register(_WorkspaceHeaderProvider)\n\
+          \n    if mlflow_insecure_tls:\n        os.environ[\"MLFLOW_TRACKING_INSECURE_TLS\"\
+          ] = \"true\"\n\n    if not os.environ.get(\"MLFLOW_TRACKING_TOKEN\"):\n\
+          \        token_path = os.environ.get(\"TOKEN_PATH\", \"/var/run/secrets/kubernetes.io/serviceaccount/token\"\
+          )\n        try:\n            with open(token_path, \"r\", encoding=\"utf-8\"\
+          ) as f:\n                token = f.read().strip()\n            if token:\n\
+          \                os.environ[\"MLFLOW_TRACKING_TOKEN\"] = token\n       \
+          \         print(\"[LOG] Using K8s service account token for MLflow auth\"\
+          )\n        except FileNotFoundError:\n            pass\n        except Exception\
+          \ as e:\n            print(f\"[WARN] Could not read K8s token from {token_path}:\
+          \ {e}\")\n\n    print(f\"[LOG] Loading evaluation results from {evaluation_results_input.path}\"\
+          )\n    with open(evaluation_results_input.path, \"r\", encoding=\"utf-8\"\
+          ) as f:\n        results = json.load(f)\n\n    benchmark_id = results.get(\"\
+          benchmark_id\", \"ragas-eval\")\n    metrics_data = results.get(\"metrics\"\
+          , {})\n    dataset_size = results.get(\"dataset_size\", 0)\n    valid_entries\
+          \ = results.get(\"valid_entries\", 0)\n    evaluation_model_id = results.get(\"\
+          evaluation_model_id\", \"\")\n    evaluation_embedding_model_id = results.get(\"\
+          evaluation_embedding_model_id\", \"\")\n\n    mlflow.set_tracking_uri(uri)\n\
+          \n    with mlflow.start_run(experiment_id=experiment_id, run_name=benchmark_id)\
+          \ as run:\n        for metric_name, metric_value in metrics_data.items():\n\
+          \            if isinstance(metric_value, float) and math.isnan(metric_value):\n\
+          \                continue\n            mlflow.log_metric(metric_name, float(metric_value))\n\
+          \            print(f\"   [OK] Logged metric {metric_name}: {metric_value:.4f}\"\
+          )\n\n        mlflow.log_metric(\"dataset_size\", float(dataset_size))\n\
+          \        mlflow.log_metric(\"valid_entries\", float(valid_entries))\n\n\
+          \        mlflow.log_param(\"evaluation_model_id\", evaluation_model_id)\n\
+          \        mlflow.log_param(\"evaluation_embedding_model_id\", evaluation_embedding_model_id)\n\
+          \        mlflow.log_param(\"benchmark_id\", benchmark_id)\n        mlflow.log_param(\"\
+          mode\", results.get(\"mode\", \"ragas_direct\"))\n\n        run_id = run.info.run_id\n\
+          \n    print(f\"[OK] Logged metrics to MLflow run {run_id} in experiment\
+          \ {experiment_id}\")\n    return run_id\n\n"
+        image: quay.io/modh/odh-pipeline-runtime-pytorch-cuda-py312-ubi9@sha256:72ff2381e5cb24d6f549534cb74309ed30e92c1ca80214669adb78ad30c5ae12
+        resources:
+          cpuLimit: 1.0
+          cpuRequest: 0.1
+          memoryLimit: 0.536870912
+          memoryRequest: 0.268435456
+          resourceCpuLimit: '1'
+          resourceCpuRequest: 100m
+          resourceMemoryLimit: 512Mi
+          resourceMemoryRequest: 256Mi
     exec-resolve-vector-store:
       container:
         args:
@@ -572,7 +780,7 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'llama-stack-client==0.3.5'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'llama-stack-client==0.4.2'\
           \ 'httpx'  &&  python3 -m pip install --quiet --no-warn-script-location\
           \ 'kfp==2.15.2' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
           3.9\"' && \"$0\" \"$@\"\n"
@@ -651,7 +859,7 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'llama-stack-client==0.3.5'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'llama-stack-client==0.4.2'\
           \ 'httpx' 'ragas' 'langchain-openai'  &&  python3 -m pip install --quiet\
           \ --no-warn-script-location 'kfp==2.15.2' '--no-deps' 'typing-extensions>=3.7.4,<5;\
           \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
@@ -667,31 +875,36 @@ deploymentSpec:
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef run_ragas_evaluation(\n    ragas_dataset_input: Input[Dataset],\n\
-          \    model_id: str,\n    embedding_model_id: str,\n    metrics: str,\n \
-          \   evaluation_output_metrics: Output[Metrics],\n    evaluation_results_output:\
-          \ Output[Dataset],\n    batch_size: int = 0,\n    show_progress: bool =\
-          \ True,\n    timeout: int = 600,\n):\n    \"\"\"\n    Run RAGAS evaluation\
-          \ on the generated dataset using the RAGAS library directly.\n\n    Same\
-          \ evaluation logic as run_ragas_evaluation_direct in ragas_dataset_eval_direct.py:\n\
-          \    converts dataset with _context_from_json_like, uses RAGAS evaluate()\
-          \ with Llama Stack\n    LLM (ChatOpenAI at /v1) and Llama Stack embeddings.\n\
-          \n    Args:\n        ragas_dataset_input: Input artifact containing the\
-          \ RAGAS dataset JSON\n        model_id: LLM model identifier for scoring\
-          \ (judge)\n        embedding_model_id: Embedding model identifier\n    \
-          \    metrics: Comma-separated list of RAGAS metrics to compute\n       \
-          \ evaluation_output_metrics: Kubeflow Metrics output for logging RAGAS metrics\n\
-          \        evaluation_results_output: Output artifact for the evaluation results\
-          \ JSON\n        batch_size: RAGAS evaluate() batch size (0 = None, no batching)\n\
-          \        show_progress: Whether to show progress bar during evaluation\n\
-          \        timeout: Timeout in seconds for Llama Stack client\n    \"\"\"\n\
-          \    import json\n    import math\n    import os\n    from datetime import\
-          \ datetime\n\n    llama_stack_host = os.environ.get(\"LLAMA_STACK_HOST\"\
-          )\n    llama_stack_port = os.environ.get(\"LLAMA_STACK_PORT\")\n    if not\
-          \ llama_stack_host:\n        raise ValueError(\"LLAMA_STACK_HOST environment\
-          \ variable must be set\")\n    if not llama_stack_port:\n        raise ValueError(\"\
-          LLAMA_STACK_PORT environment variable must be set\")\n    print(f\"LLAMA_STACK_HOST:\
-          \ {llama_stack_host}\")\n    print(f\"LLAMA_STACK_PORT: {llama_stack_port}\"\
-          )\n\n    print(f\"\\n[LOAD] Loading RAGAS dataset from artifact: {ragas_dataset_input.path}\"\
+          \    evaluation_model_id: str,\n    evaluation_embedding_model_id: str,\n\
+          \    metrics: str,\n    evaluation_output_metrics: Output[Metrics],\n  \
+          \  evaluation_results_output: Output[Dataset],\n    batch_size: int = 0,\n\
+          \    show_progress: bool = True,\n    timeout: int = 600,\n):\n    \"\"\"\
+          \n    Run RAGAS evaluation on the generated dataset using the RAGAS library\
+          \ directly.\n\n    Same evaluation logic as run_ragas_evaluation_direct\
+          \ in ragas_dataset_eval_direct.py:\n    converts dataset with _context_from_json_like,\
+          \ uses RAGAS evaluate() with Llama Stack\n    LLM (ChatOpenAI at /v1) and\
+          \ Llama Stack embeddings.\n\n    Args:\n        ragas_dataset_input: Input\
+          \ artifact containing the RAGAS dataset JSON\n        evaluation_model_id:\
+          \ LLM model identifier for RAGAS scoring (judge); can differ from\n    \
+          \        the model used to generate the dataset\n        evaluation_embedding_model_id:\
+          \ Embedding model identifier for RAGAS metrics (e.g. answer_relevancy)\n\
+          \        metrics: Comma-separated list of RAGAS metrics to compute\n   \
+          \     evaluation_output_metrics: Kubeflow Metrics output for logging RAGAS\
+          \ metrics\n        evaluation_results_output: Output artifact for the evaluation\
+          \ results JSON\n        batch_size: RAGAS evaluate() batch size (0 = None,\
+          \ no batching)\n        show_progress: Whether to show progress bar during\
+          \ evaluation\n        timeout: Timeout in seconds for Llama Stack client\n\
+          \    \"\"\"\n    import json\n    import math\n    import os\n    import\
+          \ re\n    from datetime import datetime\n\n    def _strip_think_blocks(text):\n\
+          \        if not text or not isinstance(text, str):\n            return text\n\
+          \        return re.sub(r\"<think>.*?</think>\", \"\", text, flags=re.DOTALL).strip()\n\
+          \n    llama_stack_host = os.environ.get(\"LLAMA_STACK_HOST\")\n    llama_stack_port\
+          \ = os.environ.get(\"LLAMA_STACK_PORT\")\n    if not llama_stack_host:\n\
+          \        raise ValueError(\"LLAMA_STACK_HOST environment variable must be\
+          \ set\")\n    if not llama_stack_port:\n        raise ValueError(\"LLAMA_STACK_PORT\
+          \ environment variable must be set\")\n    print(f\"LLAMA_STACK_HOST: {llama_stack_host}\"\
+          )\n    print(f\"LLAMA_STACK_PORT: {llama_stack_port}\")\n\n    print(f\"\
+          \\n[LOAD] Loading RAGAS dataset from artifact: {ragas_dataset_input.path}\"\
           )\n    with open(ragas_dataset_input.path, \"r\", encoding=\"utf-8\") as\
           \ f:\n        ragas_dataset_json = f.read()\n    ragas_dataset = json.loads(ragas_dataset_json)\n\
           \    print(f\"[OK] Loaded {len(ragas_dataset)} entries\")\n\n    metrics_list\
@@ -719,15 +932,16 @@ deploymentSpec:
           \ for x in obj\n            )\n        return s\n\n    def convert_to_evaluation_format(ragas_dataset_inner):\n\
           \        ragas_data = []\n        for entry in ragas_dataset_inner:\n  \
           \          if entry.get(\"error\"):\n                continue\n        \
-          \    answer = entry.get(\"answer\", \"\")\n            if not answer or\
-          \ (isinstance(answer, str) and answer.startswith(\"ERROR:\")):\n       \
-          \         continue\n            question = entry.get(\"question\", \"\"\
-          )\n            if not question:\n                continue\n            raw_contexts\
-          \ = entry.get(\"contexts\") or []\n            if raw_contexts == [\"No\
-          \ context retrieved\"]:\n                raw_contexts = []\n           \
-          \ retrieved_contexts = [_context_from_json_like(c) for c in raw_contexts]\n\
-          \            ragas_entry = {\n                \"user_input\": question,\n\
-          \                \"response\": answer,\n                \"retrieved_contexts\"\
+          \    answer = entry.get(\"answer\", \"\")\n            if isinstance(answer,\
+          \ str):\n                answer = _strip_think_blocks(answer)\n        \
+          \    if not answer or (isinstance(answer, str) and answer.startswith(\"\
+          ERROR:\")):\n                continue\n            question = entry.get(\"\
+          question\", \"\")\n            if not question:\n                continue\n\
+          \            raw_contexts = entry.get(\"contexts\") or []\n            if\
+          \ raw_contexts == [\"No context retrieved\"]:\n                raw_contexts\
+          \ = []\n            retrieved_contexts = [_context_from_json_like(c) for\
+          \ c in raw_contexts]\n            ragas_entry = {\n                \"user_input\"\
+          : question,\n                \"response\": answer,\n                \"retrieved_contexts\"\
           : retrieved_contexts,\n            }\n            if \"ground_truth\" in\
           \ entry and entry[\"ground_truth\"]:\n                ragas_entry[\"reference\"\
           ] = entry[\"ground_truth\"]\n            ragas_data.append(ragas_entry)\n\
@@ -807,23 +1021,25 @@ deploymentSpec:
           ]\n    SingleTurnSample = ragas[\"SingleTurnSample\"]\n    evaluate_fn =\
           \ ragas[\"evaluate\"]\n    ragas_metrics = ragas[\"metrics\"]\n\n    metric_objects\
           \ = get_metric_objects(metrics_list, ragas_metrics)\n    print(f\"[METRICS]\
-          \ {', '.join(metrics_list)}\")\n\n    if not (model_id and embedding_model_id):\n\
+          \ {', '.join(metrics_list)}\")\n\n    if not (evaluation_model_id and evaluation_embedding_model_id):\n\
           \        raise ValueError(\n            \"When using Llama Stack for RAGAS,\
-          \ both model_id and embedding_model_id are required.\"\n        )\n    print(f\"\
-          [LLAMA-STACK] Using LLM: {model_id} (chat), embeddings: {embedding_model_id}\"\
-          )\n    llm, embeddings = _get_llama_stack_llm_and_embeddings(model_id, embedding_model_id,\
-          \ timeout_sec=timeout)\n\n    samples = [SingleTurnSample(**entry) for entry\
-          \ in ragas_data]\n    eval_dataset = EvaluationDataset(samples=samples)\n\
-          \    print(\"[START] Running RAGAS evaluate()...\")\n\n    eval_kw = {\n\
-          \        \"metrics\": metric_objects,\n        \"show_progress\": show_progress,\n\
-          \        \"batch_size\": batch_size_arg,\n    }\n    eval_kw[\"llm\"] =\
-          \ llm\n    eval_kw[\"embeddings\"] = embeddings\n\n    result = evaluate_fn(eval_dataset,\
-          \ **eval_kw)\n\n    scores_rows = result.scores\n    if not scores_rows:\n\
-          \        raise RuntimeError(\"RAGAS evaluate() returned no scores\")\n\n\
-          \    final_metrics = {}\n    individual_scores = {m: [] for m in metrics_list}\n\
-          \n    for row in scores_rows:\n        for metric in metrics_list:\n   \
-          \         val = row.get(metric)\n            if val is not None and not\
-          \ (isinstance(val, float) and math.isnan(val)):\n                individual_scores[metric].append(float(val))\n\
+          \ both evaluation_model_id and evaluation_embedding_model_id are required.\"\
+          \n        )\n    print(\n        f\"[LLAMA-STACK] Using evaluation LLM (judge):\
+          \ {evaluation_model_id}, \"\n        f\"embeddings: {evaluation_embedding_model_id}\"\
+          \n    )\n    llm, embeddings = _get_llama_stack_llm_and_embeddings(\n  \
+          \      evaluation_model_id, evaluation_embedding_model_id, timeout_sec=timeout\n\
+          \    )\n\n    samples = [SingleTurnSample(**entry) for entry in ragas_data]\n\
+          \    eval_dataset = EvaluationDataset(samples=samples)\n    print(\"[START]\
+          \ Running RAGAS evaluate()...\")\n\n    eval_kw = {\n        \"metrics\"\
+          : metric_objects,\n        \"show_progress\": show_progress,\n        \"\
+          batch_size\": batch_size_arg,\n    }\n    eval_kw[\"llm\"] = llm\n    eval_kw[\"\
+          embeddings\"] = embeddings\n\n    result = evaluate_fn(eval_dataset, **eval_kw)\n\
+          \n    scores_rows = result.scores\n    if not scores_rows:\n        raise\
+          \ RuntimeError(\"RAGAS evaluate() returned no scores\")\n\n    final_metrics\
+          \ = {}\n    individual_scores = {m: [] for m in metrics_list}\n\n    for\
+          \ row in scores_rows:\n        for metric in metrics_list:\n           \
+          \ val = row.get(metric)\n            if val is not None and not (isinstance(val,\
+          \ float) and math.isnan(val)):\n                individual_scores[metric].append(float(val))\n\
           \n    for metric in metrics_list:\n        vals = individual_scores[metric]\n\
           \        if vals:\n            final_metrics[metric] = sum(vals) / len(vals)\n\
           \        else:\n            final_metrics[metric] = float(\"nan\")\n\n \
@@ -833,10 +1049,10 @@ deploymentSpec:
           : final_metrics,\n        \"individual_scores\": individual_scores,\n  \
           \      \"generations\": [],\n        \"failures\": [],\n        \"dataset_size\"\
           : len(ragas_dataset),\n        \"valid_entries\": len(ragas_data),\n   \
-          \     \"mode\": \"ragas_direct\",\n        \"model_id\": model_id,\n   \
-          \     \"embedding_model_id\": embedding_model_id,\n    }\n\n    print(\"\
-          \\n\" + \"=\" * 70)\n    print(\"[RESULTS] RAGAS EVALUATION (direct)\")\n\
-          \    print(\"=\" * 70)\n    print(f\"Run:      {results['benchmark_id']}\"\
+          \     \"mode\": \"ragas_direct\",\n        \"evaluation_model_id\": evaluation_model_id,\n\
+          \        \"evaluation_embedding_model_id\": evaluation_embedding_model_id,\n\
+          \    }\n\n    print(\"\\n\" + \"=\" * 70)\n    print(\"[RESULTS] RAGAS EVALUATION\
+          \ (direct)\")\n    print(\"=\" * 70)\n    print(f\"Run:      {results['benchmark_id']}\"\
           )\n    print(f\"Dataset:  {results['dataset_size']} entries ({results['valid_entries']}\
           \ evaluated)\")\n    if results[\"metrics\"]:\n        print(\"\\n[METRICS]\"\
           )\n        for metric, score in results[\"metrics\"].items():\n        \
@@ -861,13 +1077,13 @@ deploymentSpec:
           : results[\"individual_scores\"],\n        \"generations\": results[\"generations\"\
           ],\n        \"failures\": results[\"failures\"],\n        \"dataset_size\"\
           : results[\"dataset_size\"],\n        \"valid_entries\": results[\"valid_entries\"\
-          ],\n        \"mode\": results[\"mode\"],\n        \"model_id\": results[\"\
-          model_id\"],\n        \"embedding_model_id\": results[\"embedding_model_id\"\
-          ],\n    }\n\n    results_json = json.dumps(formatted_results, indent=2,\
-          \ ensure_ascii=False)\n    with open(evaluation_results_output.path, \"\
-          w\", encoding=\"utf-8\") as f:\n        f.write(results_json)\n    print(f\"\
-          \\n[OK] Written evaluation results to artifact: {evaluation_results_output.path}\"\
-          )\n\n"
+          ],\n        \"mode\": results[\"mode\"],\n        \"evaluation_model_id\"\
+          : results[\"evaluation_model_id\"],\n        \"evaluation_embedding_model_id\"\
+          : results[\"evaluation_embedding_model_id\"],\n    }\n\n    results_json\
+          \ = json.dumps(formatted_results, indent=2, ensure_ascii=False)\n    with\
+          \ open(evaluation_results_output.path, \"w\", encoding=\"utf-8\") as f:\n\
+          \        f.write(results_json)\n    print(f\"\\n[OK] Written evaluation\
+          \ results to artifact: {evaluation_results_output.path}\")\n\n"
         image: quay.io/modh/odh-pipeline-runtime-pytorch-cuda-py312-ubi9@sha256:72ff2381e5cb24d6f549534cb74309ed30e92c1ca80214669adb78ad30c5ae12
         resources:
           cpuLimit: 4.0
@@ -878,12 +1094,132 @@ deploymentSpec:
           resourceCpuRequest: 500m
           resourceMemoryLimit: 6Gi
           resourceMemoryRequest: 2Gi
+    exec-verify-mlflow-tracking:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - verify_mlflow_tracking
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'mlflow>=3.6.0,<3.7.0'\
+          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.15.2'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef verify_mlflow_tracking(\n    mlflow_tracking_uri: str = \"https://mlflow.redhat-ods-applications.svc.cluster.local:8443\"\
+          ,\n    mlflow_workspace: str = \"\",\n    mlflow_insecure_tls: bool = False,\n\
+          ) -> str:\n    \"\"\"\n    Set up MLflow tracking (token, TLS, workspace)\
+          \ and verify connectivity.\n\n    Configures MLFLOW_TRACKING_TOKEN, MLFLOW_TRACKING_INSECURE_TLS,\
+          \ and workspace\n    context as needed, then validates that the tracking\
+          \ server is reachable.\n    Uses MLFLOW_TRACKING_URI environment variable\
+          \ if mlflow_tracking_uri is empty.\n\n    When running in OpenShift/Kubernetes,\
+          \ automatically sets the service account\n    token from /var/run/secrets/kubernetes.io/serviceaccount/token\
+          \ for bearer auth\n    (e.g., Red Hat ODSC MLflow). Set MLFLOW_TRACKING_TOKEN\
+          \ to override.\n\n    For Red Hat ODSC MLflow with workspaces enabled, set\
+          \ mlflow_workspace to the\n    workspace name (e.g., llama-stack-demo-user1)\
+          \ to satisfy \"Workspace context\n    is required for this request.\"\n\n\
+          \    Args:\n        mlflow_tracking_uri: MLflow tracking server URL (e.g.,\n\
+          \            https://mlflow.redhat-ods-applications.svc.cluster.local:8443).\n\
+          \            If empty, uses MLFLOW_TRACKING_URI env var.\n        mlflow_workspace:\
+          \ Workspace name (fallback). When running in K8s, workspace\n          \
+          \  defaults to pod namespace; MLFLOW_WORKSPACE env var supersedes.\n   \
+          \     mlflow_insecure_tls: If True, skip TLS verification (for self-signed\
+          \ certs).\n\n    Returns:\n        The validated tracking URI on success,\
+          \ or empty string if no URI is configured (no-op).\n\n    Raises:\n    \
+          \    ValueError: If the tracking server is unreachable.\n    \"\"\"\n  \
+          \  import os\n\n    from mlflow.tracking.request_header.abstract_request_header_provider\
+          \ import RequestHeaderProvider\n    from mlflow.tracking.request_header.registry\
+          \ import _request_header_provider_registry\n    from mlflow.tracking import\
+          \ MlflowClient\n\n    uri = (mlflow_tracking_uri or \"\").strip() or os.environ.get(\"\
+          MLFLOW_TRACKING_URI\", \"\").strip()\n    if not uri:\n        print(\"\
+          [VERIFY] No MLflow tracking URI configured; skipping (no-op)\")\n      \
+          \  return \"\"\n\n    # Workspace must match pod namespace when running\
+          \ in K8s; MLFLOW_WORKSPACE env var supersedes\n    workspace = os.environ.get(\"\
+          MLFLOW_WORKSPACE\", \"\").strip()\n    if not workspace:\n        namespace_path\
+          \ = os.environ.get(\"NAMESPACE_PATH\", \"/var/run/secrets/kubernetes.io/serviceaccount/namespace\"\
+          )\n        try:\n            with open(namespace_path, \"r\", encoding=\"\
+          utf-8\") as f:\n                workspace = f.read().strip()\n        except\
+          \ FileNotFoundError:\n            pass\n    if not workspace:\n        workspace\
+          \ = (mlflow_workspace or \"\").strip()\n    if workspace:\n        os.environ[\"\
+          MLFLOW_WORKSPACE\"] = workspace\n\n        class _WorkspaceHeaderProvider(RequestHeaderProvider):\n\
+          \            def in_context(self):\n                return bool(os.environ.get(\"\
+          MLFLOW_WORKSPACE\"))\n\n            def request_headers(self):\n       \
+          \         return {\"X-MLFLOW-WORKSPACE\": os.environ[\"MLFLOW_WORKSPACE\"\
+          ]}\n\n        _request_header_provider_registry.register(_WorkspaceHeaderProvider)\n\
+          \        print(f\"[VERIFY] Set MLFLOW_WORKSPACE={workspace} (X-MLFLOW-WORKSPACE\
+          \ header)\")\n\n    if mlflow_insecure_tls:\n        os.environ[\"MLFLOW_TRACKING_INSECURE_TLS\"\
+          ] = \"true\"\n        print(\"[VERIFY] MLFLOW_TRACKING_INSECURE_TLS=true\
+          \ (self-signed cert)\")\n\n    # Set K8s service account token when running\
+          \ in OpenShift (e.g., Red Hat ODSC MLflow)\n    if not os.environ.get(\"\
+          MLFLOW_TRACKING_TOKEN\"):\n        token_path = os.environ.get(\"TOKEN_PATH\"\
+          , \"/var/run/secrets/kubernetes.io/serviceaccount/token\")\n        try:\n\
+          \            with open(token_path, \"r\", encoding=\"utf-8\") as f:\n  \
+          \              token = f.read().strip()\n            if token:\n       \
+          \         os.environ[\"MLFLOW_TRACKING_TOKEN\"] = token\n              \
+          \  print(\"[VERIFY] Set MLFLOW_TRACKING_TOKEN from K8s service account\"\
+          )\n        except FileNotFoundError:\n            pass  # Not running in\
+          \ K8s; token not required\n        except Exception as e:\n            print(f\"\
+          [WARN] Could not read K8s token from {token_path}: {e}\")\n\n    print(f\"\
+          [VERIFY] Testing MLflow tracking URL: {uri}\")\n\n    try:\n        client\
+          \ = MlflowClient(tracking_uri=uri)\n        experiments = client.search_experiments(max_results=1)\n\
+          \        print(f\"[OK] MLflow tracking is reachable (found {len(experiments)}+\
+          \ experiment(s))\")\n        return uri\n    except Exception as e:\n  \
+          \      print(f\"[ERROR] MLflow tracking verification failed: {e}\")\n  \
+          \      raise ValueError(f\"MLflow tracking URL is not reachable: {e}\")\
+          \ from e\n\n"
+        image: quay.io/modh/odh-pipeline-runtime-pytorch-cuda-py312-ubi9@sha256:72ff2381e5cb24d6f549534cb74309ed30e92c1ca80214669adb78ad30c5ae12
+        resources:
+          cpuLimit: 1.0
+          cpuRequest: 0.1
+          memoryLimit: 0.536870912
+          memoryRequest: 0.268435456
+          resourceCpuLimit: '1'
+          resourceCpuRequest: 100m
+          resourceMemoryLimit: 512Mi
+          resourceMemoryRequest: 256Mi
 pipelineInfo:
   description: Pipeline to generate and evaluate RAGAS datasets from a git repository
   name: ragas-evaluation-pipeline
 root:
   dag:
     tasks:
+      create-mlflow-experiment:
+        cachingOptions: {}
+        componentRef:
+          name: comp-create-mlflow-experiment
+        dependentTasks:
+        - verify-mlflow-tracking
+        inputs:
+          parameters:
+            mlflow_experiment_name:
+              componentInputParameter: mlflow_experiment_name
+            mlflow_insecure_tls:
+              componentInputParameter: mlflow_insecure_tls
+            mlflow_tracking_uri:
+              taskOutputParameter:
+                outputParameterKey: Output
+                producerTask: verify-mlflow-tracking
+            mlflow_tracking_uri_param:
+              componentInputParameter: mlflow_tracking_uri
+            mlflow_workspace:
+              componentInputParameter: mlflow_workspace
+        taskInfo:
+          name: create-mlflow-experiment
       discover-mcp-tools:
         cachingOptions: {}
         componentRef:
@@ -902,6 +1238,7 @@ root:
         - discover-mcp-tools
         - load-base-dataset-from-git
         - resolve-vector-store
+        - verify-mlflow-tracking
         inputs:
           artifacts:
             base_dataset_input:
@@ -909,12 +1246,16 @@ root:
                 outputArtifactKey: base_dataset_output
                 producerTask: load-base-dataset-from-git
           parameters:
+            agent_type:
+              componentInputParameter: agent_type
             file_search_max_chunks:
               componentInputParameter: file_search_max_chunks
             file_search_max_tokens_per_chunk:
               componentInputParameter: file_search_max_tokens_per_chunk
             file_search_score_threshold:
               componentInputParameter: file_search_score_threshold
+            force_file_search:
+              componentInputParameter: force_file_search
             instructions:
               componentInputParameter: instructions
             mcp_tools_json:
@@ -923,6 +1264,10 @@ root:
                 producerTask: discover-mcp-tools
             model_id:
               componentInputParameter: model_id
+            pattern:
+              componentInputParameter: pattern
+            ranker:
+              componentInputParameter: ranker
             retrieval_mode:
               componentInputParameter: retrieval_mode
             timeout:
@@ -950,6 +1295,37 @@ root:
               componentInputParameter: git_repo
         taskInfo:
           name: load-base-dataset-from-git
+      log-mlflow-metrics:
+        cachingOptions: {}
+        componentRef:
+          name: comp-log-mlflow-metrics
+        dependentTasks:
+        - create-mlflow-experiment
+        - run-ragas-evaluation
+        - verify-mlflow-tracking
+        inputs:
+          artifacts:
+            evaluation_results_input:
+              taskOutputArtifact:
+                outputArtifactKey: evaluation_results_output
+                producerTask: run-ragas-evaluation
+          parameters:
+            experiment_id:
+              taskOutputParameter:
+                outputParameterKey: Output
+                producerTask: create-mlflow-experiment
+            mlflow_insecure_tls:
+              componentInputParameter: mlflow_insecure_tls
+            mlflow_tracking_uri:
+              taskOutputParameter:
+                outputParameterKey: Output
+                producerTask: verify-mlflow-tracking
+            mlflow_tracking_uri_param:
+              componentInputParameter: mlflow_tracking_uri
+            mlflow_workspace:
+              componentInputParameter: mlflow_workspace
+        taskInfo:
+          name: log-mlflow-metrics
       resolve-vector-store:
         cachingOptions: {}
         componentRef:
@@ -975,12 +1351,12 @@ root:
           parameters:
             batch_size:
               componentInputParameter: batch_size
-            embedding_model_id:
-              componentInputParameter: embedding_model_id
+            evaluation_embedding_model_id:
+              componentInputParameter: evaluation_embedding_model_id
+            evaluation_model_id:
+              componentInputParameter: evaluation_model_id
             metrics:
               componentInputParameter: metrics
-            model_id:
-              componentInputParameter: model_id
             show_progress:
               runtimeValue:
                 constant: true
@@ -988,8 +1364,26 @@ root:
               componentInputParameter: timeout
         taskInfo:
           name: run-ragas-evaluation
+      verify-mlflow-tracking:
+        cachingOptions: {}
+        componentRef:
+          name: comp-verify-mlflow-tracking
+        inputs:
+          parameters:
+            mlflow_insecure_tls:
+              componentInputParameter: mlflow_insecure_tls
+            mlflow_tracking_uri:
+              componentInputParameter: mlflow_tracking_uri
+            mlflow_workspace:
+              componentInputParameter: mlflow_workspace
+        taskInfo:
+          name: verify-mlflow-tracking
   inputDefinitions:
     parameters:
+      agent_type:
+        defaultValue: default
+        isOptional: true
+        parameterType: STRING
       base_dataset_filename:
         defaultValue: base_dataset_small.json
         isOptional: true
@@ -998,8 +1392,12 @@ root:
         defaultValue: 0.0
         isOptional: true
         parameterType: NUMBER_INTEGER
-      embedding_model_id:
+      evaluation_embedding_model_id:
         defaultValue: sentence-transformers/nomic-ai/nomic-embed-text-v1.5
+        isOptional: true
+        parameterType: STRING
+      evaluation_model_id:
+        defaultValue: qwen3-8b-fp8-dynamic/qwen3-8b-fp8-dynamic
         isOptional: true
         parameterType: STRING
       file_search_max_chunks:
@@ -1014,6 +1412,10 @@ root:
         defaultValue: 0.7
         isOptional: true
         parameterType: NUMBER_DOUBLE
+      force_file_search:
+        defaultValue: false
+        isOptional: true
+        parameterType: BOOLEAN
       git_context:
         defaultValue: materials/datasets
         isOptional: true
@@ -1027,29 +1429,42 @@ root:
         isOptional: true
         parameterType: STRING
       instructions:
-        defaultValue: ''
+        defaultValue: You are a helpful assistant that can answer questions about
+          the documents in the vector store.
         isOptional: true
         parameterType: STRING
-      max_wait_seconds:
-        defaultValue: 900.0
-        isOptional: true
-        parameterType: NUMBER_INTEGER
       metrics:
         defaultValue: answer_relevancy,faithfulness,context_precision,context_recall
         isOptional: true
         parameterType: STRING
-      mode:
-        defaultValue: inline
+      mlflow_experiment_name:
+        defaultValue: ragas-scoring-experiment
+        isOptional: true
+        parameterType: STRING
+      mlflow_insecure_tls:
+        defaultValue: false
+        isOptional: true
+        parameterType: BOOLEAN
+      mlflow_tracking_uri:
+        defaultValue: https://mlflow.redhat-ods-applications.svc.cluster.local:8443
+        isOptional: true
+        parameterType: STRING
+      mlflow_workspace:
+        defaultValue: ''
         isOptional: true
         parameterType: STRING
       model_id:
-        defaultValue: llama-3-1-8b-w4a16/llama-3-1-8b-w4a16
+        defaultValue: qwen3-8b-fp8-dynamic/qwen3-8b-fp8-dynamic
         isOptional: true
         parameterType: STRING
-      poll_interval:
-        defaultValue: 5.0
+      pattern:
+        defaultValue: simple
         isOptional: true
-        parameterType: NUMBER_INTEGER
+        parameterType: STRING
+      ranker:
+        defaultValue: default
+        isOptional: true
+        parameterType: STRING
       retrieval_mode:
         defaultValue: vector
         isOptional: true

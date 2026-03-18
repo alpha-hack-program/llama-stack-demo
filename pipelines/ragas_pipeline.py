@@ -305,6 +305,356 @@ def resolve_vector_store(
 
 @dsl.component(
     base_image=PYTORCH_IMAGE,
+    packages_to_install=["mlflow>=3.6.0,<3.7.0"],
+)
+def verify_mlflow_tracking(
+    mlflow_tracking_uri: str = "https://mlflow.redhat-ods-applications.svc.cluster.local:8443",
+    mlflow_workspace: str = "",
+    mlflow_insecure_tls: bool = False,
+) -> str:
+    """
+    Set up MLflow tracking (token, TLS, workspace) and verify connectivity.
+
+    Configures MLFLOW_TRACKING_TOKEN, MLFLOW_TRACKING_INSECURE_TLS, and workspace
+    context as needed, then validates that the tracking server is reachable.
+    Uses MLFLOW_TRACKING_URI environment variable if mlflow_tracking_uri is empty.
+
+    When running in OpenShift/Kubernetes, automatically sets the service account
+    token from /var/run/secrets/kubernetes.io/serviceaccount/token for bearer auth
+    (e.g., Red Hat ODSC MLflow). Set MLFLOW_TRACKING_TOKEN to override.
+
+    For Red Hat ODSC MLflow with workspaces enabled, set mlflow_workspace to the
+    workspace name (e.g., llama-stack-demo-user1) to satisfy "Workspace context
+    is required for this request."
+
+    Args:
+        mlflow_tracking_uri: MLflow tracking server URL (e.g.,
+            https://mlflow.redhat-ods-applications.svc.cluster.local:8443).
+            If empty, uses MLFLOW_TRACKING_URI env var.
+        mlflow_workspace: Workspace name (fallback). When running in K8s, workspace
+            defaults to pod namespace; MLFLOW_WORKSPACE env var supersedes.
+        mlflow_insecure_tls: If True, skip TLS verification (for self-signed certs).
+
+    Returns:
+        The validated tracking URI on success, or empty string if no URI is configured (no-op).
+
+    Raises:
+        ValueError: If the tracking server is unreachable.
+    """
+    import os
+
+    from mlflow.tracking.request_header.abstract_request_header_provider import RequestHeaderProvider
+    from mlflow.tracking.request_header.registry import _request_header_provider_registry
+    from mlflow.tracking import MlflowClient
+
+    uri = (mlflow_tracking_uri or "").strip() or os.environ.get("MLFLOW_TRACKING_URI", "").strip()
+    if not uri:
+        print("[VERIFY] No MLflow tracking URI configured; skipping (no-op)")
+        return ""
+
+    # Workspace must match pod namespace when running in K8s; MLFLOW_WORKSPACE env var supersedes
+    workspace = os.environ.get("MLFLOW_WORKSPACE", "").strip()
+    if not workspace:
+        namespace_path = os.environ.get("NAMESPACE_PATH", "/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+        try:
+            with open(namespace_path, "r", encoding="utf-8") as f:
+                workspace = f.read().strip()
+        except FileNotFoundError:
+            pass
+    if not workspace:
+        workspace = (mlflow_workspace or "").strip()
+    if workspace:
+        os.environ["MLFLOW_WORKSPACE"] = workspace
+
+        class _WorkspaceHeaderProvider(RequestHeaderProvider):
+            def in_context(self):
+                return bool(os.environ.get("MLFLOW_WORKSPACE"))
+
+            def request_headers(self):
+                return {"X-MLFLOW-WORKSPACE": os.environ["MLFLOW_WORKSPACE"]}
+
+        _request_header_provider_registry.register(_WorkspaceHeaderProvider)
+        print(f"[VERIFY] Set MLFLOW_WORKSPACE={workspace} (X-MLFLOW-WORKSPACE header)")
+
+    if mlflow_insecure_tls:
+        os.environ["MLFLOW_TRACKING_INSECURE_TLS"] = "true"
+        print("[VERIFY] MLFLOW_TRACKING_INSECURE_TLS=true (self-signed cert)")
+
+    # Set K8s service account token when running in OpenShift (e.g., Red Hat ODSC MLflow)
+    if not os.environ.get("MLFLOW_TRACKING_TOKEN"):
+        token_path = os.environ.get("TOKEN_PATH", "/var/run/secrets/kubernetes.io/serviceaccount/token")
+        try:
+            with open(token_path, "r", encoding="utf-8") as f:
+                token = f.read().strip()
+            if token:
+                os.environ["MLFLOW_TRACKING_TOKEN"] = token
+                print("[VERIFY] Set MLFLOW_TRACKING_TOKEN from K8s service account")
+        except FileNotFoundError:
+            pass  # Not running in K8s; token not required
+        except Exception as e:
+            print(f"[WARN] Could not read K8s token from {token_path}: {e}")
+
+    print(f"[VERIFY] Testing MLflow tracking URL: {uri}")
+
+    try:
+        client = MlflowClient(tracking_uri=uri)
+        experiments = client.search_experiments(max_results=1)
+        print(f"[OK] MLflow tracking is reachable (found {len(experiments)}+ experiment(s))")
+        return uri
+    except Exception as e:
+        print(f"[ERROR] MLflow tracking verification failed: {e}")
+        raise ValueError(f"MLflow tracking URL is not reachable: {e}") from e
+
+
+@dsl.component(
+    base_image=PYTORCH_IMAGE,
+    packages_to_install=["mlflow>=3.6.0,<3.7.0"],
+)
+def create_mlflow_experiment(
+    mlflow_tracking_uri: str,
+    mlflow_experiment_name: str,
+    mlflow_workspace: str,
+    mlflow_insecure_tls: bool,
+    mlflow_tracking_uri_param: str,
+) -> str:
+    """
+    Create an MLflow experiment after MLflow connectivity has been verified.
+
+    Should run after verify_mlflow_tracking. All input parameters are required;
+    raises ValueError if any parameter is not passed or is empty.
+
+    Tags the experiment with mlflow.experimentKind=custom_model_development
+    (for Red Hat ODSC MLflow UI compatibility).
+
+    Args:
+        mlflow_tracking_uri: Validated tracking URI from verify_mlflow_tracking output.
+        mlflow_experiment_name: Name of the experiment to create or reuse.
+        mlflow_workspace: Workspace name (fallback). In K8s, defaults to pod namespace;
+            MLFLOW_WORKSPACE env var supersedes.
+        mlflow_insecure_tls: If True, skip TLS verification (for self-signed certs).
+        mlflow_tracking_uri_param: Pipeline-level tracking URI (fallback when upstream output empty).
+
+    Returns:
+        The experiment ID.
+    """
+    import os
+
+    from mlflow.tracking.request_header.abstract_request_header_provider import RequestHeaderProvider
+    from mlflow.tracking.request_header.registry import _request_header_provider_registry
+    from mlflow.tracking import MlflowClient
+
+    if mlflow_insecure_tls is None:
+        raise ValueError("mlflow_insecure_tls is required")
+
+    uri = (
+        (mlflow_tracking_uri or "").strip()
+        or (mlflow_tracking_uri_param or "").strip()
+        or os.environ.get("MLFLOW_TRACKING_URI", "").strip()
+    )
+    if not uri:
+        raise ValueError("mlflow_tracking_uri or mlflow_tracking_uri_param is required")
+
+    experiment_name = (mlflow_experiment_name or "").strip()
+    if not experiment_name:
+        raise ValueError("mlflow_experiment_name is required")
+
+    # Workspace must match pod namespace when running in K8s; MLFLOW_WORKSPACE env var supersedes
+    workspace = os.environ.get("MLFLOW_WORKSPACE", "").strip()
+    if not workspace:
+        namespace_path = os.environ.get("NAMESPACE_PATH", "/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+        try:
+            with open(namespace_path, "r", encoding="utf-8") as f:
+                workspace = f.read().strip()
+        except FileNotFoundError:
+            pass
+    if not workspace:
+        workspace = (mlflow_workspace or "").strip()
+    if not workspace:
+        raise ValueError("mlflow_workspace is required (or set MLFLOW_WORKSPACE, or run in K8s where pod namespace is used)")
+
+    os.environ["MLFLOW_WORKSPACE"] = workspace
+
+    class _WorkspaceHeaderProvider(RequestHeaderProvider):
+        def in_context(self):
+            return bool(os.environ.get("MLFLOW_WORKSPACE"))
+
+        def request_headers(self):
+            return {"X-MLFLOW-WORKSPACE": os.environ["MLFLOW_WORKSPACE"]}
+
+    _request_header_provider_registry.register(_WorkspaceHeaderProvider)
+
+    if mlflow_insecure_tls:
+        os.environ["MLFLOW_TRACKING_INSECURE_TLS"] = "true"
+
+    # Use K8s service account token when running in OpenShift (e.g., Red Hat ODSC MLflow)
+    if not os.environ.get("MLFLOW_TRACKING_TOKEN"):
+        token_path = os.environ.get("TOKEN_PATH", "/var/run/secrets/kubernetes.io/serviceaccount/token")
+        try:
+            with open(token_path, "r", encoding="utf-8") as f:
+                token = f.read().strip()
+            if token:
+                os.environ["MLFLOW_TRACKING_TOKEN"] = token
+                print("[CREATE] Using K8s service account token for MLflow auth")
+        except FileNotFoundError:
+            pass  # Not running in K8s; token not required
+        except Exception as e:
+            print(f"[WARN] Could not read K8s token from {token_path}: {e}")
+
+    print(f"[CREATE] Creating MLflow experiment: {experiment_name}")
+
+    default_experiment_tag_key = "mlflow.experimentKind"
+    default_experiment_tag_value = "custom_model_development"
+
+    try:
+        client = MlflowClient(tracking_uri=uri)
+
+        existing = client.get_experiment_by_name(experiment_name)
+        if existing:
+            experiment_id = existing.experiment_id
+            print(f"[OK] Experiment already exists: {experiment_name} (id={experiment_id})")
+        else:
+            experiment_id = client.create_experiment(experiment_name)
+            print(f"[OK] Created experiment: {experiment_name} (id={experiment_id})")
+
+        client.set_experiment_tag(experiment_id, default_experiment_tag_key, default_experiment_tag_value)
+        print(f"[OK] Tagged experiment with {default_experiment_tag_key}={default_experiment_tag_value}")
+
+        return experiment_id
+    except Exception as e:
+        print(f"[ERROR] Failed to create MLflow experiment: {e}")
+        raise ValueError(f"Failed to create MLflow experiment '{experiment_name}': {e}") from e
+
+
+@dsl.component(
+    base_image=PYTORCH_IMAGE,
+    packages_to_install=["mlflow>=3.6.0,<3.7.0"],
+)
+def log_mlflow_metrics(
+    evaluation_results_input: Input[Dataset],
+    experiment_id: str,
+    mlflow_tracking_uri: str,
+    mlflow_workspace: str,
+    mlflow_insecure_tls: bool,
+    mlflow_tracking_uri_param: str,
+) -> str:
+    """
+    Read RAGAS evaluation results and log metrics to the MLflow experiment.
+
+    Runs after run_ragas_evaluation. Reads the evaluation results JSON (metrics,
+    dataset_size, valid_entries, model ids, etc.) and logs them as an MLflow run
+    in the experiment created by create_mlflow_experiment.
+
+    Args:
+        evaluation_results_input: Evaluation results artifact from run_ragas_evaluation.
+        experiment_id: MLflow experiment ID from create_mlflow_experiment.
+        mlflow_tracking_uri: Tracking URI from verify_mlflow_tracking output.
+        mlflow_workspace: Workspace name (fallback). In K8s, defaults to pod namespace;
+            MLFLOW_WORKSPACE env var supersedes.
+        mlflow_insecure_tls: If True, skip TLS verification.
+        mlflow_tracking_uri_param: Pipeline-level tracking URI (fallback).
+
+    Returns:
+        The MLflow run ID.
+    """
+    import json
+    import math
+    import os
+
+    import mlflow
+    from mlflow.tracking.request_header.abstract_request_header_provider import RequestHeaderProvider
+    from mlflow.tracking.request_header.registry import _request_header_provider_registry
+
+    if not experiment_id or not str(experiment_id).strip():
+        raise ValueError("experiment_id is required")
+
+    uri = (
+        (mlflow_tracking_uri or "").strip()
+        or (mlflow_tracking_uri_param or "").strip()
+        or os.environ.get("MLFLOW_TRACKING_URI", "").strip()
+    )
+    if not uri:
+        raise ValueError("mlflow_tracking_uri or mlflow_tracking_uri_param is required")
+
+    # Workspace must match pod namespace when running in K8s; MLFLOW_WORKSPACE env var supersedes
+    workspace = os.environ.get("MLFLOW_WORKSPACE", "").strip()
+    if not workspace:
+        namespace_path = os.environ.get("NAMESPACE_PATH", "/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+        try:
+            with open(namespace_path, "r", encoding="utf-8") as f:
+                workspace = f.read().strip()
+        except FileNotFoundError:
+            pass
+    if not workspace:
+        workspace = (mlflow_workspace or "").strip()
+    if not workspace:
+        raise ValueError("mlflow_workspace is required (or set MLFLOW_WORKSPACE, or run in K8s where pod namespace is used)")
+
+    if mlflow_insecure_tls is None:
+        raise ValueError("mlflow_insecure_tls is required")
+
+    os.environ["MLFLOW_WORKSPACE"] = workspace
+
+    class _WorkspaceHeaderProvider(RequestHeaderProvider):
+        def in_context(self):
+            return bool(os.environ.get("MLFLOW_WORKSPACE"))
+
+        def request_headers(self):
+            return {"X-MLFLOW-WORKSPACE": os.environ["MLFLOW_WORKSPACE"]}
+
+    _request_header_provider_registry.register(_WorkspaceHeaderProvider)
+
+    if mlflow_insecure_tls:
+        os.environ["MLFLOW_TRACKING_INSECURE_TLS"] = "true"
+
+    if not os.environ.get("MLFLOW_TRACKING_TOKEN"):
+        token_path = os.environ.get("TOKEN_PATH", "/var/run/secrets/kubernetes.io/serviceaccount/token")
+        try:
+            with open(token_path, "r", encoding="utf-8") as f:
+                token = f.read().strip()
+            if token:
+                os.environ["MLFLOW_TRACKING_TOKEN"] = token
+                print("[LOG] Using K8s service account token for MLflow auth")
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            print(f"[WARN] Could not read K8s token from {token_path}: {e}")
+
+    print(f"[LOG] Loading evaluation results from {evaluation_results_input.path}")
+    with open(evaluation_results_input.path, "r", encoding="utf-8") as f:
+        results = json.load(f)
+
+    benchmark_id = results.get("benchmark_id", "ragas-eval")
+    metrics_data = results.get("metrics", {})
+    dataset_size = results.get("dataset_size", 0)
+    valid_entries = results.get("valid_entries", 0)
+    evaluation_model_id = results.get("evaluation_model_id", "")
+    evaluation_embedding_model_id = results.get("evaluation_embedding_model_id", "")
+
+    mlflow.set_tracking_uri(uri)
+
+    with mlflow.start_run(experiment_id=experiment_id, run_name=benchmark_id) as run:
+        for metric_name, metric_value in metrics_data.items():
+            if isinstance(metric_value, float) and math.isnan(metric_value):
+                continue
+            mlflow.log_metric(metric_name, float(metric_value))
+            print(f"   [OK] Logged metric {metric_name}: {metric_value:.4f}")
+
+        mlflow.log_metric("dataset_size", float(dataset_size))
+        mlflow.log_metric("valid_entries", float(valid_entries))
+
+        mlflow.log_param("evaluation_model_id", evaluation_model_id)
+        mlflow.log_param("evaluation_embedding_model_id", evaluation_embedding_model_id)
+        mlflow.log_param("benchmark_id", benchmark_id)
+        mlflow.log_param("mode", results.get("mode", "ragas_direct"))
+
+        run_id = run.info.run_id
+
+    print(f"[OK] Logged metrics to MLflow run {run_id} in experiment {experiment_id}")
+    return run_id
+
+
+@dsl.component(
+    base_image=PYTORCH_IMAGE,
     packages_to_install=[
         f"llama-stack-client=={LLAMA_STACK_CLIENT_VERSION}",
         "httpx",
@@ -812,12 +1162,12 @@ def pipeline(
     git_context: str = "materials/datasets",
     git_ref: str = "next",
     base_dataset_filename: str = "base_dataset_small.json",
-    model_id: str = "llama-3-1-8b-w4a16/llama-3-1-8b-w4a16",
-    evaluation_model_id: str = "llama-3-1-8b-w4a16/llama-3-1-8b-w4a16",
+    model_id: str = "qwen3-8b-fp8-dynamic/qwen3-8b-fp8-dynamic",
+    evaluation_model_id: str = "qwen3-8b-fp8-dynamic/qwen3-8b-fp8-dynamic",
     evaluation_embedding_model_id: str = "sentence-transformers/nomic-ai/nomic-embed-text-v1.5",
     vector_store_name: str = "",
     tools: str = "all",
-    instructions: str = "",
+    instructions: str = "You are a helpful assistant that can answer questions about the documents in the vector store.",
     retrieval_mode: str = "vector",  # vector, text, hybrid
     file_search_max_chunks: int = 5,
     file_search_score_threshold: float = 0.7,
@@ -827,11 +1177,12 @@ def pipeline(
     agent_type: str = "default",  # default | lang-graph
     pattern: str = "simple",  # simple | plan_execute
     metrics: str = DEFAULT_METRICS,
-    mode: str = "inline",
     batch_size: int = 0,
     timeout: int = 600,
-    max_wait_seconds: int = 900,
-    poll_interval: int = 5,
+    mlflow_tracking_uri: str = "https://mlflow.redhat-ods-applications.svc.cluster.local:8443",
+    mlflow_workspace: str = "",
+    mlflow_experiment_name: str = "ragas-scoring-experiment",
+    mlflow_insecure_tls: bool = False,
 ):
     """
     RAGAS Evaluation Pipeline (v2).
@@ -840,11 +1191,12 @@ def pipeline(
     evaluation_model_id: LLM used as RAGAS judge for scoring metrics (can be the same or different).
     agent_type: Agent backend ("default" or "lang-graph").
     pattern: Execution pattern ("simple" or "plan_execute").
-
     DAG:
-    - load_base_dataset_from_git, resolve_vector_store, discover_mcp_tools (parallel)
-    - generate_ragas_dataset (after the three above)
+    - load_base_dataset_from_git, resolve_vector_store, discover_mcp_tools, verify_mlflow_tracking (parallel)
+    - create_mlflow_experiment (after verify_mlflow_tracking)
+    - generate_ragas_dataset (after load, resolve, discover, verify_mlflow)
     - run_ragas_evaluation (after generate_ragas_dataset)
+    - log_mlflow_metrics (after run_ragas_evaluation, create_mlflow_experiment)
     """
     load_task = load_base_dataset_from_git(
         git_repo=git_repo,
@@ -890,6 +1242,31 @@ def pipeline(
     discover_task.set_memory_request("256Mi")
     discover_task.set_memory_limit("512Mi")
 
+    verify_mlflow_task = verify_mlflow_tracking(
+        mlflow_tracking_uri=mlflow_tracking_uri,
+        mlflow_workspace=mlflow_workspace,
+        mlflow_insecure_tls=mlflow_insecure_tls,
+    )
+    verify_mlflow_task.set_caching_options(False)
+    verify_mlflow_task.set_cpu_request("100m")
+    verify_mlflow_task.set_cpu_limit("1")
+    verify_mlflow_task.set_memory_request("256Mi")
+    verify_mlflow_task.set_memory_limit("512Mi")
+
+    create_mlflow_experiment_task = create_mlflow_experiment(
+        mlflow_tracking_uri=verify_mlflow_task.output,
+        mlflow_experiment_name=mlflow_experiment_name or "ragas-evaluation",
+        mlflow_workspace=mlflow_workspace,
+        mlflow_insecure_tls=mlflow_insecure_tls,
+        mlflow_tracking_uri_param=mlflow_tracking_uri,
+    )
+    create_mlflow_experiment_task.after(verify_mlflow_task)
+    create_mlflow_experiment_task.set_caching_options(False)
+    create_mlflow_experiment_task.set_cpu_request("100m")
+    create_mlflow_experiment_task.set_cpu_limit("1")
+    create_mlflow_experiment_task.set_memory_request("256Mi")
+    create_mlflow_experiment_task.set_memory_limit("512Mi")
+
     generate_task = generate_ragas_dataset(
         base_dataset_input=load_task.output,
         model_id=model_id,
@@ -906,7 +1283,7 @@ def pipeline(
         agent_type=agent_type,
         pattern=pattern,
     )
-    generate_task.after(load_task, resolve_task, discover_task)
+    generate_task.after(load_task, resolve_task, discover_task, verify_mlflow_task)
     kubernetes.use_config_map_as_env(
         task=generate_task,
         config_map_name="rag-pipeline-config",
@@ -946,6 +1323,21 @@ def pipeline(
     evaluate_task.set_cpu_limit("4")
     evaluate_task.set_memory_request("2Gi")
     evaluate_task.set_memory_limit("6Gi")
+
+    log_mlflow_task = log_mlflow_metrics(
+        evaluation_results_input=evaluate_task.outputs["evaluation_results_output"],
+        experiment_id=create_mlflow_experiment_task.output,
+        mlflow_tracking_uri=verify_mlflow_task.output,
+        mlflow_workspace=mlflow_workspace,
+        mlflow_insecure_tls=mlflow_insecure_tls,
+        mlflow_tracking_uri_param=mlflow_tracking_uri,
+    )
+    log_mlflow_task.after(evaluate_task, create_mlflow_experiment_task)
+    log_mlflow_task.set_caching_options(False)
+    log_mlflow_task.set_cpu_request("100m")
+    log_mlflow_task.set_cpu_limit("1")
+    log_mlflow_task.set_memory_request("256Mi")
+    log_mlflow_task.set_memory_limit("512Mi")
 
 
 if __name__ == "__main__":

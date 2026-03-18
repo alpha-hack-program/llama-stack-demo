@@ -30,7 +30,7 @@ usage() {
   echo "  number_of_users Number of users (user1..userN) and projects." >&2
   echo "  password        Optional. Password for all users (default: generated)." >&2
   echo "" >&2
-  echo "Optional env: CUSTOM_PROJECT (default: llama-stack-demo), HTPASSWD_OUTPUT (default: htpasswd.workshop), INSTANCE_TYPE (default: g5.4xlarge)" >&2
+  echo "Optional env: CUSTOM_PROJECT (default: llama-stack-demo), HTPASSWD_OUTPUT (default: htpasswd.workshop), INSTANCE_TYPE (default: g5.2xlarge)" >&2
   exit 1
 }
 
@@ -163,12 +163,13 @@ export CUSTOM_PROJECT GROUP_NAME
 echo ""
 
 # -----------------------------------------------------------------------------
-# Step 4: Setup monitoring and Grafana proxy RBAC
+# Step 4: Setup monitoring, MLflow, and Grafana proxy RBAC
 # -----------------------------------------------------------------------------
-echo "Step 4: Setting up monitoring, hardware profile, configmap-patcher RBAC, and Grafana proxy RBAC..."
+echo "Step 4: Setting up monitoring, hardware profile, MLflow, configmap-patcher RBAC, and Grafana proxy RBAC..."
 export CUSTOM_PROJECT
 "$SCRIPT_DIR/setup-monitoring.sh"
 "$SCRIPT_DIR/setup-hardware-profile.sh"
+"$SCRIPT_DIR/setup-mlflow.sh" "$NUM_USERS"
 "$SCRIPT_DIR/setup-rbac.sh" "$NUM_USERS"
 "$SCRIPT_DIR/setup-grafana-proxy-rbac.sh" "$NUM_USERS"
 echo ""
@@ -179,7 +180,7 @@ echo ""
 if [[ "$NO_ASSIGN" -eq 0 ]]; then
   echo "Step 5: Assigning nodes to users..."
   export CUSTOM_LABEL_PREFIX="$CUSTOM_PROJECT"
-  INSTANCE_TYPE="${INSTANCE_TYPE:-g5.4xlarge}"
+  INSTANCE_TYPE="${INSTANCE_TYPE:-g5.2xlarge}"
   "$SCRIPT_DIR/assign-nodes-to-users.sh" --summary "$NUM_USERS" "$INSTANCE_TYPE"
 else
   echo "Step 5: Skipped (--no-assign)."

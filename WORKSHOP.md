@@ -37,7 +37,7 @@ Use `workshop-setup.sh` to create the full workshop environment: users (via htpa
 - `--no-assign` — Skip node assignment (useful when nodes are pre-assigned or not needed)
 - `CUSTOM_PROJECT` — Optional env var (default: `llama-stack-demo`)
 - `HTPASSWD_OUTPUT` — Optional env var for htpasswd file path (default: `htpasswd.workshop` in repo root)
-- `INSTANCE_TYPE` — Optional env var for node assignment (default: `g5.4xlarge`); see [Instance Type](#instance-type-instance_type) below
+- `INSTANCE_TYPE` — Optional env var for node assignment (default: `g5.2xlarge`); see [Instance Type](#instance-type-instance_type) below
 
 ### Administrator: Applying the htpasswd File
 
@@ -88,20 +88,20 @@ If you do not need GPU node assignment (e.g. nodes are pre-configured or using a
 
 ### Instance Type (INSTANCE_TYPE)
 
-When assigning nodes, the script filters nodes by Kubernetes instance type (e.g. `node.kubernetes.io/instance-type`). The default is `g5.4xlarge` (AWS GPU instance). If your cluster uses different GPU or instance types, set `INSTANCE_TYPE` before running:
+When assigning nodes, the script filters nodes by Kubernetes instance type (e.g. `node.kubernetes.io/instance-type`). The default is `g5.2xlarge` (AWS GPU instance). If your cluster uses different GPU or instance types, set `INSTANCE_TYPE` before running:
 
 ```bash
-export INSTANCE_TYPE="g5.4xlarge"   # default; AWS NVIDIA GPU
+export INSTANCE_TYPE="g5.2xlarge"   # default; AWS NVIDIA GPU
 ./scripts/workshop-setup.sh 5
 ```
 
 Or when running `assign-nodes-to-users.sh` directly:
 
 ```bash
-./scripts/assign-nodes-to-users.sh 5 g5.4xlarge
+./scripts/assign-nodes-to-users.sh 5 g5.2xlarge
 ```
 
-Common values: `g5.4xlarge` (AWS), `n1-standard-4` (GCP), `Standard_NC4as_T4_v3` (Azure).
+Common values: `g5.2xlarge` (AWS), `n1-standard-4` (GCP), `Standard_NC4as_T4_v3` (Azure).
 
 ### Idempotency
 

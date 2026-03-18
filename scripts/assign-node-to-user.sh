@@ -16,7 +16,7 @@ CUSTOM_LABEL_PREFIX="${CUSTOM_LABEL_PREFIX:-llama-stack-demo}"
 usage() {
   echo "Usage: $0 <user> [instance_type]" >&2
   echo "  user           User identifier (will be sanitized: ASCII letters and numbers only)." >&2
-  echo "  instance_type  Node instance type (default: g5.4xlarge)." >&2
+  echo "  instance_type  Node instance type (default: g5.2xlarge)." >&2
   echo "" >&2
   echo "Optional env: CUSTOM_LABEL (default: assigned), CUSTOM_LABEL_PREFIX (default: llama-stack-demo)" >&2
   exit 1
@@ -27,7 +27,7 @@ if [[ $# -lt 1 ]]; then
 fi
 
 USER="$1"
-INSTANCE_TYPE="${2:-g5.4xlarge}"
+INSTANCE_TYPE="${2:-g5.2xlarge}"
 
 # Sanitize user for k8s: ASCII letters and numbers only, no spaces nor special chars
 # tr -dc removes all chars except those in the set; LC_ALL=C ensures ASCII
