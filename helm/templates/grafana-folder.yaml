@@ -1,3 +1,4 @@
+{{- if .Values.monitoring.enable }}
 ---
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaFolder
@@ -10,3 +11,4 @@ spec:
       dashboards: "grafana"
   resyncPeriod: 5m
   title: {{ .Release.Namespace | title }} Dashboards
+{{- end }}

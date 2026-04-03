@@ -24,9 +24,9 @@ ragDefaults:
   chunkOverlapInTokens: 400
   enableRagas: true
   # modelId: llama-3-1-8b-w4a16/llama-3-1-8b-w4a16
-  modelId: qwen3-8b-fp8-dynamic/qwen3-8b-fp8-dynamic
+  modelId: redhataiqwen3-8b-fp8-dynamic/redhataiqwen3-8b-fp8-dynamic
   # evaluationModelId: llama-4-scout-17b-16e-w4a16/Llama-4-Scout-17B-16E-W4A16
-  evaluationModelId: qwen3-8b-fp8-dynamic/qwen3-8b-fp8-dynamic
+  evaluationModelId: redhataiqwen3-8b-fp8-dynamic/redhataiqwen3-8b-fp8-dynamic
   vectorStoreBaseName: rag-store
   vectorStoreProviderIds: "milvus-remote, pgvector"
 
@@ -54,7 +54,7 @@ loaderJobRetries: 60
 milvusDbPath: /tmp/milvus.db
 fmsOchestratorUrl: http://localhost:8080
 
-# Deploy Playground
+# Deploy Playground (Python agentic app)
 playground:
   enabled: false
 pythonapp:
@@ -175,7 +175,7 @@ milvus:
 docsFolder: /data/docs
 
 otelCollector:
-  enabled: true
+  enabled: false
   endpoint: http://data-science-collector-collector-headless.redhat-ods-monitoring.svc.cluster.local:4318
   protocol: http/protobuf
   tracesEndpoint: http://data-science-collector-collector-headless.redhat-ods-monitoring.svc.cluster.local:4318/v1/traces
@@ -196,10 +196,10 @@ otelCollector:
 grafana:
   proxyRbac:
     # Set to false when RBAC is pre-created by scripts/setup-grafana-proxy-rbac.sh (workshop mode)
-    create: true
+    create: false
 
 monitoring:
-  enable: true
+  enable: false
   dsciName: default-dsci
   namespace: redhat-ods-monitoring
   patcherImage: registry.redhat.io/openshift4/ose-cli:v4.14
@@ -230,118 +230,26 @@ monitoring:
 # Local models - deployed in the cluster (safe to commit to git)
 # Remote models with API tokens should go in values-secrets.yaml as remoteModels
 localModels:
-  # - name: llama-3-1-8b-w4a16
-  #   displayName: Llama 3.1 8B
-  #   id: RedHatAI/Meta-Llama-3.1-8B-Instruct-quantized.w4a16
-  #   image: quay.io/redhat-ai-services/modelcar-catalog:llama-3.2-8b-instruct-quantized.w4a16
-  #   maxModelLen: '24000' # vllm max model len
-  #   maxTokens: '4096' # llama stack vllm max token, default is 4096
-  #   tlsVerify: false
-  #   externalAccess: true
-  #   runtime:
-  #     templateName: vllm-cuda-runtime
-  #     templateDisplayName: vLLM NVIDIA GPU ServingRuntime for KServe
-  #     version: v0.9.1.0
-  #     # image: quay.io/modh/vllm:rhoai-2.25-cuda
-  #     # image: registry.redhat.io/rhaiis/vllm-cuda-rhel9@sha256:ad756c01ec99a99cc7d93401c41b8d92ca96fb1ab7c5262919d818f2be4f3768
-  #     image: registry.redhat.io/rhaiis/vllm-cuda-rhel9:3.2.1
-  #     resources:
-  #       limits:
-  #         cpu: '8'
-  #         memory: 24Gi
-  #       requests:
-  #         cpu: '6'
-  #         memory: 24Gi
-  #   accelerator:
-  #     type: nvidia.com/gpu
-  #     max: '1'
-  #     min: '1'
-  #     # nodeSelector:
-  #     #   group: 'llama-stack-demo'
-  #   env:
-  #     - name: VLLM_SKIP_WARMUP
-  #       value: "true"
-  #   args:
-  #     - --enable-auto-tool-choice
-  #     - --tool-call-parser
-  #     - llama3_json
-  #     - --chat-template
-  #     - /opt/app-root/template/tool_chat_template_llama3.1_json.jinja
-  - name: qwen3-8b-fp8-dynamic
-    displayName: Qwen3 8B FP8 Dynamic
-    id: RedHatAI/Qwen3-8B-FP8-dynamic
-    image: registry.redhat.io/rhelai1/modelcar-qwen3-8b-fp8-dynamic:1.5
-    maxModelLen: '25000' # vllm max model len
-    maxTokens: '4096' # llama stack vllm max token, default is 4096
+  - name: redhataiqwen3-8b-fp8-dynamic
+    forcedName: redhataiqwen3-8b-fp8-dynamic
+    strict: true
+    url: http://redhataiqwen3-8b-fp8-dynamic-predictor:8080/v1
+    maxModelLen: '25000'
+    maxTokens: '4096'
     tlsVerify: false
-    externalAccess: true
-    runtime:
-      templateName: vllm-cuda-runtime
-      templateDisplayName: vLLM NVIDIA GPU ServingRuntime for KServe
-      version: v0.9.1.0
-      image: registry.redhat.io/rhaiis/vllm-cuda-rhel9:3.2.1
-      resources:
-        limits:
-          cpu: '8'
-          memory: 24Gi
-        requests:
-          cpu: '6'
-          memory: 24Gi
-    accelerator:
-      type: nvidia.com/gpu
-      max: '1'
-      min: '1'
-      # nodeSelector:
-      #   group: 'llama-stack-demo-user11'
-      env:
-        - name: VLLM_SKIP_WARMUP
-          value: "true"
-    args:
-      - --enable-auto-tool-choice
-      - --tool-call-parser
-      - hermes
-  # - name: jina-embeddings-v3-gpu # Matryoshka model run with vllm
-  #   displayName: Jina Embeddings v3 GPU
-  #   model: jinaai/jina-embeddings-v3
-  #   image: quay.io/atarazana/modelcar-catalog:jina-embeddings-v3
-  #   embeddingsModel: true
-  #   maxModelLen: '8192'
-  #   vectorDimension: 1024
-  #   externalAccess: true
-  #   runtime:
-  #     templateName: vllm-serving-template
-  #     templateDisplayName: vLLM Serving Template
-  #     image: registry.redhat.io/rhaiis/vllm-cuda-rhel9:3.2.1
-  #     resources:
-  #       limits:
-  #         cpu: '2'
-  #         memory: 8Gi
-  #       requests:
-  #         cpu: '1'
-  #         memory: 4Gi
-  #   accelerator:
-  #     type: 'nvidia.com/gpu'
-  #     max: '1'
-  #     min: '1'
-  #     nodeSelector:
-  #       group: 'llama-stack-demo'
-  #       # modelType: 'embeddings'
-  #   env:
-  #     - name: HF_HUB_OFFLINE
-  #       value: '0'
 
 mcpServers:
-  - id: eligibility-engine
+  - id: penalty-engine
     provider_id: model-context-protocol
     runtime: rust
     vcs:
-      uri: https://github.com/alpha-hack-program/eligibility-engine-mcp-rs.git
+      uri: https://github.com/alpha-hack-program/penalty-engine-mcp-rs.git
       ref: main
       path: .
-    image: quay.io/atarazana/eligibility-engine-mcp-rs:2.0.2
+    image: quay.io/dgarciap/penalty-engine:1.3.3
     mcp_transport: "streamable-http"
     protocol: "http"
-    host: eligibility-engine
+    host: penalty-engine
     port: 8000
     uri: "/mcp"
     replicas: 1
@@ -355,92 +263,3 @@ mcpServers:
     env:
       - name: RUST_LOG
         value: "debug"
-  - id: compatibility-engine
-    provider_id: model-context-protocol
-    runtime: rust
-    vcs:
-      uri: https://github.com/alpha-hack-program/compatibility-engine-mcp-rs.git
-      ref: main
-      path: .
-    image: quay.io/atarazana/compatibility-engine-mcp-rs:2.0.5
-    mcp_transport: "streamable-http"
-    protocol: "http"
-    host: compatibility-engine
-    port: 8000
-    uri: "/mcp"
-    replicas: 1
-    resources:
-      limits:
-        cpu: 500m
-        memory: 128Mi
-      requests:
-        cpu: 250m
-        memory: 64Mi
-    env:
-      - name: RUST_LOG
-        value: "debug"
-  # - id: cluster-insights
-  #   provider_id: model-context-protocol
-  #   runtime: rust
-  #   vcs:
-  #     uri: https://github.com/alpha-hack-program/cluster-insights-mcp-rs.git
-  #     ref: main
-  #     path: .
-  #   image: quay.io/atarazana/cluster-insights-mcp-rs:1.3.2
-  #   mcp_transport: "streamable-http"
-  #   protocol: "http"
-  #   host: cluster-insights
-  #   port: 8000
-  #   uri: "/mcp"
-  #   replicas: 1
-  #   resources:
-  #     limits:
-  #       cpu: 500m
-  #       memory: 128Mi
-  #     requests:
-  #       cpu: 250m
-  #       memory: 64Mi
-  #   env:
-  #     - name: RUST_LOG
-  #       value: "debug"
-  #   rbac:
-  #     clusterWide: true
-  #     rules:
-  #       # Permissions to read node information for cluster capacity analysis
-  #       - apiGroups: [""]
-  #         resources: ["nodes"]
-  #         verbs: ["get", "list"]
-  #       # Permissions to read pod information for resource allocation analysis
-  #       - apiGroups: [""]
-  #         resources: ["pods"]
-  #         verbs: ["get", "list"]
-  #       # Permissions to read namespace information for namespace-level resource usage
-  #       - apiGroups: [""]
-  #         resources: ["namespaces"]
-  #         verbs: ["get", "list"]
-  # - id: finance-engine
-  #   provider_id: model-context-protocol
-  #   runtime: rust
-  #   vcs:
-  #     uri: https://github.com/alpha-hack-program/finance-engine-mcp-rs.git
-  #     ref: main
-  #     path: .
-  #   # image: quay.io/atarazana/finance-engine-mcp-rs:3.1.2
-  #   description: "Finance Engine MCP Server"
-  #   mcp_transport: "streamable-http"
-  #   protocol: "http"
-  #   host: finance-engine
-  #   port: 8000
-  #   uri: "/mcp"
-  #   replicas: 1
-  #   addAppConfig: true
-  #   resources:
-  #     limits:
-  #       cpu: 500m
-  #       memory: 128Mi
-  #     requests:
-  #       cpu: 250m
-  #       memory: 64Mi
-  #   env:
-  #     - name: RUST_LOG
-  #       value: "debug"
