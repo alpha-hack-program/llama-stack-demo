@@ -3,7 +3,7 @@ app: llama-stack-demo
 partOf: llama-stack-demo
 
 # Storage class for all PVCs (e.g. nfs-csi, standard, gp2)
-storageClassName: nfs-csi
+# storageClassName: nfs-csi
 
 lsdName: rh-dev
 # lsdImage: registry.redhat.io/rhoai/odh-llama-stack-core-rhel9:v2.23
@@ -270,6 +270,14 @@ localModels:
   #     - llama3_json
   #     - --chat-template
   #     - /opt/app-root/template/tool_chat_template_llama3.1_json.jinja
+  - name: qwen3-8b-fp8-dynamic-remote
+    forcedName: qwen3-8b-fp8-dynamic
+    strict: true
+    url: http://qwen3-8b-fp8-dynamic-predictor:8080/v1
+    # api_token: sk-GTvjdDXORH2JXw4zX93osA
+    maxModelLen: '25000' # vllm max model len
+    maxTokens: '4096'
+    tlsVerify: false
   - name: qwen3-8b-fp8-dynamic
     displayName: Qwen3 8B FP8 Dynamic
     id: RedHatAI/Qwen3-8B-FP8-dynamic

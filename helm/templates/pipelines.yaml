@@ -104,7 +104,9 @@ spec:
       deploy: true
       pipelineDBName: mlpipeline
       pvcSize: 10Gi
+      {{- if .Values.storageClassName }}
       storageClassName: {{ .Values.storageClassName }}
+      {{- end }}
       username: mlpipeline
   dspVersion: v2
   objectStorage:
