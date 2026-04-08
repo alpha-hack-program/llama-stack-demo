@@ -113,7 +113,7 @@ pipelines:
   scheduler:
     pipelineName: ragas-pipeline
     experimentName: ragas-scoring-experiment
-    intervalMinutes: 2 # Interval between runs in minutes
+    intervalMinutes: 5 # Interval between runs in minutes
     params:
       gitRepo: alpha-hack-program/llama-stack-demo
       gitContext: materials/datasets
