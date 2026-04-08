@@ -27,3 +27,9 @@ spec:
         traces:
           receivers: [otlp]
           exporters: [otlphttp, debug]
+        metrics:
+          receivers: [otlp]
+          exporters: [debug]
+        logs:
+          receivers: [otlp]
+          exporters: [debug]
