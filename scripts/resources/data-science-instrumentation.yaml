@@ -1,0 +1,18 @@
+# OpenTelemetry Instrumentation for workloads that reference
+# redhat-ods-monitoring/data-science-instrumentation (e.g. playground inject-python annotation).
+# Exports to the general cluster collector in this namespace.
+apiVersion: opentelemetry.io/v1alpha1
+kind: Instrumentation
+metadata:
+  name: data-science-instrumentation
+  namespace: redhat-ods-monitoring
+spec:
+  exporter:
+    endpoint: http://data-science-collector-collector-headless.redhat-ods-monitoring.svc.cluster.local:4318
+  propagators:
+    - tracecontext
+    - baggage
+  sampler:
+    type: parentbased_traceidratio
+    argument: "1.0"
+  python: {}

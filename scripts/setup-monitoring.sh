@@ -7,8 +7,9 @@
 #   - namespace redhat-ods-monitoring
 #   - TempoMonolithic (data-science-tempomonolithic)
 #   - OpenTelemetryCollector (data-science-collector)
+#   - Instrumentation (data-science-instrumentation) for inject-python annotation targets
 #   - DSCInitialization monitoring spec (merge patch) so the operator creates Prometheus
-#     (data-science-monitoringstack-prometheus) and data-science-instrumentation
+#     (data-science-monitoringstack-prometheus)
 #
 # Particular resources (Helm chart, with monitoring.deployTempo/deployCollector false):
 #   - Grafana, GrafanaFolder, GrafanaDatasource, GrafanaDashboard
@@ -45,17 +46,17 @@ fi
 echo "Applying general monitoring manifests from: $MANIFESTS_DIR"
 echo ""
 
-# Apply only full resource manifests (namespace, Tempo, OTel collector). Do not apply
+# Apply only full resource manifests (namespace, Tempo, OTel collector, Instrumentation). Do not apply
 # dsci-monitoring-patch.yaml here — it is a merge patch (no apiVersion/kind), used below with oc patch.
-for f in namespace.yaml tempo-monolithic.yaml otel-collector.yaml; do
+for f in namespace.yaml tempo-monolithic.yaml otel-collector.yaml data-science-instrumentation.yaml; do
   if [[ -f "$MANIFESTS_DIR/$f" ]]; then
     run oc apply -f "$MANIFESTS_DIR/$f"
   fi
 done
 
 # 4. Patch DSCInitialization so the OpenShift AI operator deploys the monitoring stack
-#    (Prometheus service data-science-monitoringstack-prometheus and data-science-instrumentation).
-#    Required for Grafana datasources and OTel injection in workloads.
+#    (Prometheus service data-science-monitoringstack-prometheus).
+#    Required for Grafana datasources; Instrumentation is applied above for OTel injection in workloads.
 #    Safe to run multiple times or after a manual patch: merge patch is idempotent.
 DSCI_PATCH="$MANIFESTS_DIR/dsci-monitoring-patch.yaml"
 DSCI_NAME="${DSCI_NAME:-default-dsci}"
