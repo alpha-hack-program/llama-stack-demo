@@ -125,3 +125,11 @@ After workshop setup:
    ```
 
 For GPU node assignment details, node labels, and other configuration, see [README.md](README.md).
+
+## Pulling iamges
+
+```bash
+./scripts/pull-image-on-assigned-gpu-nodes.sh \
+  registry.redhat.io/rhelai1/modelcar-qwen3-8b-fp8-dynamic:1.5 \
+  registry.redhat.io/rhaiis/vllm-cuda-rhel9@sha256:ec799bb5eeb7e25b4b25a8917ab5161da6b6f1ab830cbba61bba371cffb0c34d
+```

@@ -171,7 +171,7 @@ export CUSTOM_PROJECT
 "$SCRIPT_DIR/setup-monitoring.sh"
 "$SCRIPT_DIR/setup-hardware-profile.sh"
 "$SCRIPT_DIR/setup-minio.sh"
-"$SCRIPT_DIR/setup-mlflow.sh" "$NUM_USERS"
+"$SCRIPT_DIR/setup-mlflow.sh"
 "$SCRIPT_DIR/setup-rbac.sh" "$NUM_USERS"
 "$SCRIPT_DIR/setup-grafana-proxy-rbac.sh" "$NUM_USERS"
 echo ""
