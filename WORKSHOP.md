@@ -128,8 +128,16 @@ For GPU node assignment details, node labels, and other configuration, see [READ
 
 ## Pulling iamges
 
+On GPU workers pull model and vllm images.
+
 ```bash
 ./scripts/pull-image-on-assigned-gpu-nodes.sh \
   registry.redhat.io/rhelai1/modelcar-qwen3-8b-fp8-dynamic:1.5 \
   registry.redhat.io/rhaiis/vllm-cuda-rhel9@sha256:ec799bb5eeb7e25b4b25a8917ab5161da6b6f1ab830cbba61bba371cffb0c34d
+```
+
+On workers pull images used in pipelines.
+
+```bash
+  ./scripts/pull-image-on-assigned-gpu-nodes.sh quay.io/modh/odh-pipeline-runtime-pytorch-cuda-py312-ubi9@sha256:72ff2381e5cb24d6f549534cb74309ed30e92c1ca80214669adb78ad30c5ae12 --label node.kubernetes.io/instance-type=m7i.2xlarge,node-role.kubernetes.io/worker --parallel 8
 ```

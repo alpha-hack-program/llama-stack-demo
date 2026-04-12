@@ -174,14 +174,6 @@ spec:
           env:
             - name: BIND_ADDRESS
               value: "0.0.0.0:{{ .port }}"
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: POD_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
             {{- if .env }}
             {{- range .env }}
             - name: {{ .name }}

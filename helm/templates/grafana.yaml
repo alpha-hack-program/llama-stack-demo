@@ -8,8 +8,8 @@ metadata:
   name: ocp-injected-certs
 ---
 apiVersion: v1
-data:
-  session_secret: {{ (randAlphaNum 10) | b64enc }}
+stringData:
+  session_secret: "SUPERSECRET"
 kind: Secret
 metadata:
   name: grafana-proxy
