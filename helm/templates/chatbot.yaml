@@ -23,7 +23,7 @@ spec:
       labels:
         app: "{{ .Values.app }}-chatbot"
       annotations:
-        instrumentation.opentelemetry.io/inject-python: redhat-ods-monitoring/data-science-instrumentation
+        instrumentation.opentelemetry.io/inject-python: {{ .Values.app }}-instrumentation
     spec:
       containers:
         - name: "{{ .Values.app }}-chatbot"

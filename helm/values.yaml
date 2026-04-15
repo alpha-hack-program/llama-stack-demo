@@ -179,15 +179,19 @@ docsFolder: /data/docs
 
 otelCollector:
   enabled: true
-  endpoint: http://data-science-collector-collector-headless.redhat-ods-monitoring.svc.cluster.local:4318
+  # Points to workshop-collector, not the RHOAI-managed data-science-collector.
+  # The RHOAI collector (Tech Preview 3.3) hardcodes an unresolvable Tempo endpoint.
+  # Revert to: http://data-science-collector.redhat-ods-monitoring.svc.cluster.local:4318
+  # when RHOAI fixes this in a future release.
+  endpoint: http://workshop-collector-collector-headless.redhat-ods-monitoring.svc.cluster.local:4318
   protocol: http/protobuf
-  tracesEndpoint: http://data-science-collector-collector-headless.redhat-ods-monitoring.svc.cluster.local:4318/v1/traces
-  metricsEndpoint: http://data-science-collector-collector-headless.redhat-ods-monitoring.svc.cluster.local:4318/v1/metrics
+  # tracesEndpoint: http://data-science-collector-collector-headless.redhat-ods-monitoring.svc.cluster.local:4318/v1/traces
+  # metricsEndpoint: http://data-science-collector-collector-headless.redhat-ods-monitoring.svc.cluster.local:4318/v1/metrics
   resourceAttributes: service.version=1.0.0,deployment.environment=development
   serviceName: llama-stack-demo
   serviceVersion: 1.0.0
   deploymentEnvironment: development
-  pythonDisabledInstrumentations: sqlite3
+  pythonDisabledInstrumentations: "" # was sqlite3
   pythonLoggingAutoInstrumentationEnabled: true
   bspMaxQueueSize: 512
   bspScheduleDelay: 5000
@@ -209,11 +213,13 @@ monitoring:
   # General resources (Tempo, OTel collector) are created by scripts/setup-monitoring.sh
   # and are not part of this release. Set to true only if this chart should create them.
   deployTempo: false
-  tempoName: data-science-tempomonolithic
+  # tempoName: data-science-tempomonolithic
+  tempoName: workshop
   tempoStorageBackend: pv
   tempoStorageSize: 10Gi
   tempoStorageClassName: ""
-  tempoOtlpHttpEndpoint: http://tempo-data-science-tempomonolithic.redhat-ods-monitoring.svc.cluster.local:4318
+  # tempoOtlpHttpEndpoint: http://tempo-data-science-tempomonolithic.redhat-ods-monitoring.svc.cluster.local:4318
+  tempoOtlpHttpEndpoint: http://tempo-workshop.redhat-ods-monitoring.svc.cluster.local:4318   # was: ...data-science-tempomonolithic...
   metrics:
     replicas: 1
     retention: 90d
@@ -227,7 +233,8 @@ monitoring:
   deployCollector: false
   collectorName: data-science-collector
   collectorReplicas: 1
-  tempoUrl: http://tempo-data-science-tempomonolithic.redhat-ods-monitoring.svc.cluster.local:3200
+  # tempoUrl: http://tempo-data-science-tempomonolithic.redhat-ods-monitoring.svc.cluster.local:3200
+  tempoUrl: http://tempo-workshop.redhat-ods-monitoring.svc.cluster.local:3200  # was: ...data-science-tempomonolithic...
   prometheusUrl: http://data-science-monitoringstack-prometheus.redhat-ods-monitoring.svc.cluster.local:9090
 
 # Local models - deployed in the cluster (safe to commit to git)
@@ -373,7 +380,7 @@ mcpServers:
       uri: https://github.com/alpha-hack-program/compatibility-engine-mcp-rs.git
       ref: main
       path: .
-    image: quay.io/atarazana/compatibility-engine-mcp-rs:2.0.5
+    image: quay.io/atarazana/compatibility-engine-mcp-rs:3.1.1
     mcp_transport: "streamable-http"
     protocol: "http"
     host: compatibility-engine
@@ -390,6 +397,8 @@ mcpServers:
     env:
       - name: RUST_LOG
         value: "debug"
+      - name: MCP_DISABLE_HOST_CHECK
+        value: "true"
   # - id: cluster-insights
   #   provider_id: model-context-protocol
   #   runtime: rust

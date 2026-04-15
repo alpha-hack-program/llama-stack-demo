@@ -17,3 +17,42 @@ spec:
     traces:
       backend: pv
       size: 10Gi
+# Needed for the workshop-collector to send traces to the workshop Tempo instance.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: workshop-tempo-pvc
+  namespace: redhat-ods-monitoring
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: tempo.grafana.com/v1alpha1
+kind: TempoMonolithic
+metadata:
+  name: workshop
+  namespace: redhat-ods-monitoring
+spec:
+  storage:
+    traces:
+      backend: pv
+      pv:
+        claim: workshop-tempo-pvc
+  ingestion:
+    otlp:
+      grpc:
+        enabled: true
+      http:
+        enabled: true
+  multitenancy:
+    enabled: false
+  # Note: OpenShift warns that unauthenticated TempoMonolithic is not
+  # supported on OpenShift. This is intentional for the workshop —
+  # the RHOAI-managed Tempo gateway (data-science-tempomonolithic-gateway)
+  # requires mTLS + OPA authorization which does not accept the
+  # workshop-collector service account token in RHOAI 3.3 Tech Preview.
+  # Revert to data-science-tempomonolithic when the Tech Preview bug is fixed.

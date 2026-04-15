@@ -43,8 +43,8 @@ spec:
           {
             "current": {
               "selected": true,
-              "text": "{{ .Values.app }}",
-              "value": "{{ .Values.app }}"
+              "text": ".*",
+              "value": ".*"
             },
             "hide": 0,
             "includeAll": false,
@@ -54,11 +54,16 @@ spec:
             "options": [
               {
                 "selected": true,
-                "text": "{{ .Values.app }}",
-                "value": "{{ .Values.app }}"
+                "text": ".*",
+                "value": ".*"
+              },
+              {
+                "selected": false,
+                "text": "{{ .Values.app }}.*",
+                "value": "{{ .Values.app }}.*"
               }
             ],
-            "query": "{{ .Values.app }}",
+            "query": ".*,{{ .Values.app }}.*",
             "refresh": 0,
             "type": "custom"
           }

@@ -1,5 +1,5 @@
 #!/bin/sh
-PROJECT=llama-stack-demo
+PROJECT=llama-stack-demo-user1
 APP_NAME=eligibility
 # VALUES="--values intel.yaml"
 # VALUES="--values nvidia.yaml"

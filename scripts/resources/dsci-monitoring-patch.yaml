@@ -14,3 +14,7 @@ spec:
         backend: pv
         retention: "2160h0m0s"
         size: "100Gi"
+      exporters:
+        tempo-gateway:
+          endpoint: 'tempo-data-science-tempomonolithic-gateway.redhat-ods-monitoring.svc.cluster.local:4317' # was: ...data-science-tempomonolithic...
+          type: otlp

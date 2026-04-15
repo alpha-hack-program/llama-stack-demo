@@ -1,35 +1,234 @@
 # General (cluster-wide) OpenTelemetry collector. Not managed by any Helm release.
 # Sends traces to the general Tempo instance. Referenced by app workloads via
 # data-science-collector-collector-headless.redhat-ods-monitoring.svc.cluster.local.
+# ---
+# apiVersion: opentelemetry.io/v1beta1
+# kind: OpenTelemetryCollector
+# metadata:
+#   name: data-science-collector
+#   namespace: redhat-ods-monitoring
+# spec:
+#   mode: deployment
+#   replicas: 1
+#   config:
+#     receivers:
+#       otlp:
+#         protocols:
+#           grpc: {}
+#           http: {}
+#     exporters:
+#       otlphttp:
+#         endpoint: http://tempo-data-science-tempomonolithic.redhat-ods-monitoring.svc.cluster.local:4318
+#         headers:
+#           X-Scope-OrgID: redhat-ods-monitoring
+#       debug:
+#         verbosity: detailed
+#     service:
+#       pipelines:
+#         traces:
+#           receivers: [otlp]
+#           exporters: [otlphttp, debug]
+#         metrics:
+#           receivers: [otlp]
+#           exporters: [debug]
+#         logs:
+#           receivers: [otlp]
+#           exporters: [debug]
+---
+# Workshop OTLP collector. Not managed by RHOAI.
+# Receives push-based telemetry from instrumented app workloads and forwards
+# to Tempo via the gateway service.
+#
+# Used because the RHOAI-managed data-science-collector (Tech Preview 3.3)
+# hardcodes an internal Tempo endpoint that does not resolve externally.
+# Switch back to data-science-collector when RHOAI fixes this in a future release
+# by updating otelCollector.endpoint in values.yaml.
+#
+# Headless service: workshop-collector-collector-headless.redhat-ods-monitoring.svc.cluster.local
+# gRPC:  4317
+# HTTP:  4318  ← used by Instrumentation CR
+# Exporter: tempo-workshop.redhat-ods-monitoring.svc.cluster.local:4317
 apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
-  name: data-science-collector
+  name: workshop-collector
   namespace: redhat-ods-monitoring
 spec:
   mode: deployment
   replicas: 1
+  volumes:
+    - name: tls-certs
+      secret:
+        secretName: data-science-collector-tls
+  volumeMounts:
+    - name: tls-certs
+      mountPath: /etc/otel-collector/tls
+      readOnly: true
   config:
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 2000
+        spike_limit_mib: 400
+      k8sattributes: {}
+      resourcedetection:
+        detectors: [openshift]
+      batch:
+        send_batch_size: 100
+        timeout: 5s
+
     receivers:
       otlp:
         protocols:
           grpc: {}
           http: {}
+
     exporters:
-      otlphttp:
-        endpoint: http://tempo-data-science-tempomonolithic.redhat-ods-monitoring.svc.cluster.local:4318
-        headers:
-          X-Scope-OrgID: redhat-ods-monitoring
+      # Workshop-owned Tempo (no auth, no mTLS).
+      # RHOAI data-science-tempomonolithic-gateway requires mTLS + OPA
+      # which rejects the workshop-collector SA token in RHOAI 3.3 Tech Preview.
+      # Revert to data-science-tempomonolithic-gateway:4317 when fixed.
+      otlp/tempo:
+        endpoint: tempo-workshop.redhat-ods-monitoring.svc.cluster.local:4317
+        tls:
+          insecure: true
+      prometheus:
+        endpoint: 0.0.0.0:8889
+        resource_to_telemetry_conversion:
+          enabled: true
       debug:
         verbosity: detailed
+
     service:
       pipelines:
         traces:
           receivers: [otlp]
-          exporters: [otlphttp, debug]
+          processors: [memory_limiter, k8sattributes, resourcedetection, batch]
+          exporters: [otlp/tempo, debug]
         metrics:
           receivers: [otlp]
-          exporters: [debug]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [prometheus]
         logs:
           receivers: [otlp]
           exporters: [debug]
+---
+# ServiceMonitor for workshop-collector Prometheus metrics endpoint.
+# Tells RHOAI Prometheus (data-science-monitoringstack) to scrape OTLP-pushed
+# metrics exposed by the workshop-collector on port 8889.
+# This covers metrics from all instrumented workloads: chatbot, LSD, MCP servers,
+# pipeline pods, and local MCP servers connected via port-forward.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: workshop-collector-metrics
+  namespace: redhat-ods-monitoring
+  labels:
+    monitoring.opendatahub.io/scrape: "true"
+spec:
+  endpoints:
+  - port: prometheus
+    scheme: http
+    interval: 30s
+    path: /metrics
+  namespaceSelector:
+    matchNames:
+    - redhat-ods-monitoring
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: workshop-collector-collector
+---
+# Pull-based Prometheus scraper. Discovers and scrapes pods via Kubernetes SD.
+# Handles workshop app metrics (vLLM, MCP servers) and optionally GPU metrics.
+# Uses prometheus.io/port annotation when present, falls back to 8080.
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: data-science-prometheus-scraper
+  namespace: redhat-ods-monitoring
+spec:
+  mode: deployment
+  replicas: 1
+  config:
+    extensions:
+      bearertokenauth:
+        filename: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+    receivers:
+      prometheus:
+        config:
+          scrape_configs:
+            # Scrapes all pods labelled monitoring.opendatahub.io/scrape=true.
+            # Add prometheus.io/port annotation to pods that don't use 8080.
+            - job_name: data-science-collector-prometheus
+              scrape_interval: 30s
+              scrape_timeout: 10s
+              metrics_path: /metrics
+              bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+              tls_config:
+                insecure_skip_verify: true
+              kubernetes_sd_configs:
+                - role: pod
+              relabel_configs:
+                - action: keep
+                  source_labels: [__meta_kubernetes_pod_label_monitoring_opendatahub_io_scrape]
+                  regex: "true"
+                # Use prometheus.io/port annotation if present
+                - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                  action: replace
+                  regex: '([^:]+)(?::\d+)?;(\d+)'
+                  replacement: '$1:$2'
+                  target_label: __address__
+                # Fall back to 8080 if annotation absent
+                - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                  action: replace
+                  regex: '([^:]+)(?::\d+)?;$'
+                  replacement: '$1:8080'
+                  target_label: __address__
+                # Honour prometheus.io/path annotation if present
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+                  action: replace
+                  regex: '(.+)'
+                  target_label: __metrics_path__
+
+            # Uncomment to enable GPU metrics from DCGM exporter.
+            # Requires nvidia-gpu-operator to be installed and DCGM pods running.
+            # Verify DCGM is running: oc get pods -n nvidia-gpu-operator | grep dcgm
+            - job_name: dcgm-exporter-accelerator-metrics
+              scrape_interval: 30s
+              scrape_timeout: 10s
+              bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+              tls_config:
+                insecure_skip_verify: true
+              kubernetes_sd_configs:
+                - role: pod
+                  namespaces:
+                    names:
+                      - nvidia-gpu-operator
+              relabel_configs:
+                - action: keep
+                  source_labels: [__meta_kubernetes_pod_label_app]
+                  regex: nvidia-dcgm-exporter
+                - source_labels: [__address__]
+                  action: replace
+                  regex: '([^:]+)(?::\d+)?'
+                  replacement: '$1:9400'
+                  target_label: __address__
+
+    processors:
+      batch:
+        send_batch_size: 10000
+
+    exporters:
+      prometheus:
+        endpoint: 0.0.0.0:8889
+        resource_to_telemetry_conversion:
+          enabled: true
+        # No TLS — internal cluster traffic only
+
+    service:
+      pipelines:
+        metrics:
+          receivers: [prometheus]
+          processors: [batch]
+          exporters: [prometheus]
