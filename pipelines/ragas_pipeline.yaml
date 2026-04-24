@@ -15,7 +15,7 @@
 #    git_ref: str [Default: 'next']
 #    git_repo: str [Default: 'alpha-hack-program/llama-stack-demo']
 #    instructions: str [Default: 'You are a helpful assistant that can answer questions about the documents in the vector store.']
-#    metrics: str [Default: 'answer_relevancy,faithfulness,context_precision,context_recall']
+#    metrics: str [Default: 'answer_relevancy,faithfulness,context_precision,context_recall,answer_correctness']
 #    mlflow_experiment_name: str [Default: 'ragas-scoring-experiment']
 #    mlflow_insecure_tls: bool [Default: False]
 #    mlflow_tracking_uri: str [Default: 'https://mlflow.redhat-ods-applications.svc.cluster.local:8443']
@@ -992,56 +992,58 @@ deploymentSpec:
           \        from ragas.metrics._answer_relevance import answer_relevancy\n\
           \            from ragas.metrics._context_precision import context_precision\n\
           \            from ragas.metrics._context_recall import context_recall\n\
+          \            from ragas.metrics._answer_correctness import answer_correctness\n\
           \            return {\n                \"EvaluationDataset\": EvaluationDataset,\n\
           \                \"SingleTurnSample\": SingleTurnSample,\n             \
           \   \"evaluate\": evaluate,\n                \"metrics\": {\n          \
           \          \"faithfulness\": faithfulness,\n                    \"answer_relevancy\"\
           : answer_relevancy,\n                    \"context_precision\": context_precision,\n\
           \                    \"context_recall\": context_recall,\n             \
-          \   },\n            }\n        except ImportError as e:\n            raise\
-          \ ImportError(\"ragas is required. pip install ragas\") from e\n\n    def\
-          \ get_metric_objects(metrics_list_inner, ragas_metrics):\n        resolved\
-          \ = []\n        for name in metrics_list_inner:\n            name = name.strip().lower()\n\
-          \            if name not in ragas_metrics:\n                raise ValueError(f\"\
-          Unknown metric '{name}'. Available: {', '.join(ragas_metrics)}\")\n    \
-          \        resolved.append(ragas_metrics[name])\n        return resolved\n\
-          \n    _apply_eval_log_level()\n    ragas_data = convert_to_evaluation_format(ragas_dataset)\n\
-          \    skipped = len(ragas_dataset) - len(ragas_data)\n    if skipped:\n \
-          \       print(f\"[WARN] Skipped {skipped} invalid/error entries\")\n   \
-          \ if not ragas_data:\n        has_questions = any(e.get(\"question\") for\
-          \ e in ragas_dataset)\n        if has_questions and not any(e.get(\"answer\"\
-          ) for e in ragas_dataset):\n            raise ValueError(\n            \
-          \    \"No valid entries for RAGAS evaluation. Input looks like a base dataset\
-          \ \"\n                \"(has 'question' but no 'answer'). Generate a RAGAS\
-          \ dataset first.\"\n            )\n        raise ValueError(\n         \
-          \   \"No valid entries for RAGAS evaluation. \"\n            \"All entries\
-          \ were invalid (error, ERROR: answer, or missing question/answer).\"\n \
-          \       )\n    print(f\"[OK] {len(ragas_data)} entries to evaluate\")\n\n\
-          \    ragas = _import_ragas()\n    EvaluationDataset = ragas[\"EvaluationDataset\"\
-          ]\n    SingleTurnSample = ragas[\"SingleTurnSample\"]\n    evaluate_fn =\
-          \ ragas[\"evaluate\"]\n    ragas_metrics = ragas[\"metrics\"]\n\n    metric_objects\
-          \ = get_metric_objects(metrics_list, ragas_metrics)\n    print(f\"[METRICS]\
-          \ {', '.join(metrics_list)}\")\n\n    if not (evaluation_model_id and evaluation_embedding_model_id):\n\
-          \        raise ValueError(\n            \"When using Llama Stack for RAGAS,\
-          \ both evaluation_model_id and evaluation_embedding_model_id are required.\"\
-          \n        )\n    print(\n        f\"[LLAMA-STACK] Using evaluation LLM (judge):\
-          \ {evaluation_model_id}, \"\n        f\"embeddings: {evaluation_embedding_model_id}\"\
-          \n    )\n    llm, embeddings = _get_llama_stack_llm_and_embeddings(\n  \
-          \      evaluation_model_id, evaluation_embedding_model_id, timeout_sec=timeout\n\
-          \    )\n\n    samples = [SingleTurnSample(**entry) for entry in ragas_data]\n\
-          \    eval_dataset = EvaluationDataset(samples=samples)\n    print(\"[START]\
-          \ Running RAGAS evaluate()...\")\n\n    eval_kw = {\n        \"metrics\"\
-          : metric_objects,\n        \"show_progress\": show_progress,\n        \"\
-          batch_size\": batch_size_arg,\n    }\n    eval_kw[\"llm\"] = llm\n    eval_kw[\"\
-          embeddings\"] = embeddings\n\n    result = evaluate_fn(eval_dataset, **eval_kw)\n\
-          \n    scores_rows = result.scores\n    if not scores_rows:\n        raise\
-          \ RuntimeError(\"RAGAS evaluate() returned no scores\")\n\n    final_metrics\
-          \ = {}\n    individual_scores = {m: [] for m in metrics_list}\n\n    for\
-          \ row in scores_rows:\n        for metric in metrics_list:\n           \
-          \ val = row.get(metric)\n            if val is not None and not (isinstance(val,\
-          \ float) and math.isnan(val)):\n                individual_scores[metric].append(float(val))\n\
-          \n    for metric in metrics_list:\n        vals = individual_scores[metric]\n\
-          \        if vals:\n            final_metrics[metric] = sum(vals) / len(vals)\n\
+          \       \"answer_correctness\": answer_correctness,\n                },\n\
+          \            }\n        except ImportError as e:\n            raise ImportError(\"\
+          ragas is required. pip install ragas\") from e\n\n    def get_metric_objects(metrics_list_inner,\
+          \ ragas_metrics):\n        resolved = []\n        for name in metrics_list_inner:\n\
+          \            name = name.strip().lower()\n            if name not in ragas_metrics:\n\
+          \                raise ValueError(f\"Unknown metric '{name}'. Available:\
+          \ {', '.join(ragas_metrics)}\")\n            resolved.append(ragas_metrics[name])\n\
+          \        return resolved\n\n    _apply_eval_log_level()\n    ragas_data\
+          \ = convert_to_evaluation_format(ragas_dataset)\n    skipped = len(ragas_dataset)\
+          \ - len(ragas_data)\n    if skipped:\n        print(f\"[WARN] Skipped {skipped}\
+          \ invalid/error entries\")\n    if not ragas_data:\n        has_questions\
+          \ = any(e.get(\"question\") for e in ragas_dataset)\n        if has_questions\
+          \ and not any(e.get(\"answer\") for e in ragas_dataset):\n            raise\
+          \ ValueError(\n                \"No valid entries for RAGAS evaluation.\
+          \ Input looks like a base dataset \"\n                \"(has 'question'\
+          \ but no 'answer'). Generate a RAGAS dataset first.\"\n            )\n \
+          \       raise ValueError(\n            \"No valid entries for RAGAS evaluation.\
+          \ \"\n            \"All entries were invalid (error, ERROR: answer, or missing\
+          \ question/answer).\"\n        )\n    print(f\"[OK] {len(ragas_data)} entries\
+          \ to evaluate\")\n\n    ragas = _import_ragas()\n    EvaluationDataset =\
+          \ ragas[\"EvaluationDataset\"]\n    SingleTurnSample = ragas[\"SingleTurnSample\"\
+          ]\n    evaluate_fn = ragas[\"evaluate\"]\n    ragas_metrics = ragas[\"metrics\"\
+          ]\n\n    metric_objects = get_metric_objects(metrics_list, ragas_metrics)\n\
+          \    print(f\"[METRICS] {', '.join(metrics_list)}\")\n\n    if not (evaluation_model_id\
+          \ and evaluation_embedding_model_id):\n        raise ValueError(\n     \
+          \       \"When using Llama Stack for RAGAS, both evaluation_model_id and\
+          \ evaluation_embedding_model_id are required.\"\n        )\n    print(\n\
+          \        f\"[LLAMA-STACK] Using evaluation LLM (judge): {evaluation_model_id},\
+          \ \"\n        f\"embeddings: {evaluation_embedding_model_id}\"\n    )\n\
+          \    llm, embeddings = _get_llama_stack_llm_and_embeddings(\n        evaluation_model_id,\
+          \ evaluation_embedding_model_id, timeout_sec=timeout\n    )\n\n    samples\
+          \ = [SingleTurnSample(**entry) for entry in ragas_data]\n    eval_dataset\
+          \ = EvaluationDataset(samples=samples)\n    print(\"[START] Running RAGAS\
+          \ evaluate()...\")\n\n    eval_kw = {\n        \"metrics\": metric_objects,\n\
+          \        \"show_progress\": show_progress,\n        \"batch_size\": batch_size_arg,\n\
+          \    }\n    eval_kw[\"llm\"] = llm\n    eval_kw[\"embeddings\"] = embeddings\n\
+          \n    result = evaluate_fn(eval_dataset, **eval_kw)\n\n    scores_rows =\
+          \ result.scores\n    if not scores_rows:\n        raise RuntimeError(\"\
+          RAGAS evaluate() returned no scores\")\n\n    final_metrics = {}\n    individual_scores\
+          \ = {m: [] for m in metrics_list}\n\n    for row in scores_rows:\n     \
+          \   for metric in metrics_list:\n            val = row.get(metric)\n   \
+          \         if val is not None and not (isinstance(val, float) and math.isnan(val)):\n\
+          \                individual_scores[metric].append(float(val))\n\n    for\
+          \ metric in metrics_list:\n        vals = individual_scores[metric]\n  \
+          \      if vals:\n            final_metrics[metric] = sum(vals) / len(vals)\n\
           \        else:\n            final_metrics[metric] = float(\"nan\")\n\n \
           \   base_timestamp = datetime.now().strftime(\"%Y%m%d_%H%M%S\")\n    results\
           \ = {\n        \"benchmark_id\": f\"ragas_direct_{base_timestamp}\",\n \
@@ -1434,7 +1436,7 @@ root:
         isOptional: true
         parameterType: STRING
       metrics:
-        defaultValue: answer_relevancy,faithfulness,context_precision,context_recall
+        defaultValue: answer_relevancy,faithfulness,context_precision,context_recall,answer_correctness
         isOptional: true
         parameterType: STRING
       mlflow_experiment_name:

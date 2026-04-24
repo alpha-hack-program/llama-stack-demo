@@ -38,7 +38,7 @@ Usage:
 
     # Custom metrics and output path
     python ragas_dataset_eval_new.py ./ragas_dataset.json -o results.json \\
-        --metrics "faithfulness,answer_relevancy,context_precision,context_recall"
+        --metrics "faithfulness,answer_relevancy,context_precision,context_recall,answer_correctness"
 
     # With progress and batching
     python ragas_dataset_eval_new.py ./ragas_dataset.json --batch-size 5 --no-progress
@@ -251,6 +251,7 @@ def _import_ragas():
         from ragas.metrics._answer_relevance import answer_relevancy
         from ragas.metrics._context_precision import context_precision
         from ragas.metrics._context_recall import context_recall
+        from ragas.metrics._answer_correctness import answer_correctness
         return {
             "EvaluationDataset": EvaluationDataset,
             "SingleTurnSample": SingleTurnSample,
@@ -260,6 +261,7 @@ def _import_ragas():
                 "answer_relevancy": answer_relevancy,
                 "context_precision": context_precision,
                 "context_recall": context_recall,
+                "answer_correctness": answer_correctness,
             },
         }
     except ImportError as e:
@@ -429,7 +431,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--metrics",
-        default="faithfulness,answer_relevancy,context_precision,context_recall",
+        default="faithfulness,answer_relevancy,context_precision,context_recall,answer_correctness",
         help="Comma-separated RAGAS metrics",
     )
     parser.add_argument(

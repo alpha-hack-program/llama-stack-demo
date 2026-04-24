@@ -33,7 +33,7 @@ from kfp.dsl import Input, Output, Dataset, Metrics
 # Workbench Runtime Image: Pytorch with Python 3.12 (UBI 9)
 PYTORCH_IMAGE = "quay.io/modh/odh-pipeline-runtime-pytorch-cuda-py312-ubi9@sha256:72ff2381e5cb24d6f549534cb74309ed30e92c1ca80214669adb78ad30c5ae12"
 
-DEFAULT_METRICS = "answer_relevancy,faithfulness,context_precision,context_recall"
+DEFAULT_METRICS = "answer_relevancy,faithfulness,context_precision,context_recall,answer_correctness"
 
 LLAMA_STACK_CLIENT_VERSION = "0.4.2"
 
@@ -991,6 +991,7 @@ def run_ragas_evaluation(
             from ragas.metrics._answer_relevance import answer_relevancy
             from ragas.metrics._context_precision import context_precision
             from ragas.metrics._context_recall import context_recall
+            from ragas.metrics._answer_correctness import answer_correctness
             return {
                 "EvaluationDataset": EvaluationDataset,
                 "SingleTurnSample": SingleTurnSample,
@@ -1000,6 +1001,7 @@ def run_ragas_evaluation(
                     "answer_relevancy": answer_relevancy,
                     "context_precision": context_precision,
                     "context_recall": context_recall,
+                    "answer_correctness": answer_correctness,
                 },
             }
         except ImportError as e:
