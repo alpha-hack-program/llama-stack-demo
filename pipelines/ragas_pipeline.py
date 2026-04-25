@@ -940,11 +940,25 @@ def run_ragas_evaluation(
             self._client = client
             self._model_id = model_id_emb
 
+        # RAGAS/LangChain compatibility: different metrics call different
+        # method names depending on library versions.
+        def embed_text(self, text):
+            return self._embed_one(text)
+
         def embed_documents(self, texts):
             return [self._embed_one(t) for t in texts]
 
         def embed_query(self, text):
             return self._embed_one(text)
+
+        async def aembed_text(self, text):
+            return self.embed_text(text)
+
+        async def aembed_documents(self, texts):
+            return self.embed_documents(texts)
+
+        async def aembed_query(self, text):
+            return self.embed_query(text)
 
         def _embed_one(self, text):
             resp = self._client.embeddings.create(model=self._model_id, input=text)
