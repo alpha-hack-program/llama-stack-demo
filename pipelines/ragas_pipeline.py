@@ -804,10 +804,10 @@ def run_ragas_evaluation(
     evaluation_results_output: Output[Dataset],
     batch_size: int = 0,
     show_progress: bool = True,
-    temperature: float = 0.0,
     timeout: int = 600,
-    max_tokens: int = 4096,
-    max_retries: int = 2,
+    judge_temperature: float = 0.0,
+    judge_max_tokens: int = 4096,
+    judge_max_retries: int = 2,
 ):
     """
     Run RAGAS evaluation on the generated dataset using the RAGAS library directly.
@@ -826,7 +826,10 @@ def run_ragas_evaluation(
         evaluation_results_output: Output artifact for the evaluation results JSON
         batch_size: RAGAS evaluate() batch size (0 = None, no batching)
         show_progress: Whether to show progress bar during evaluation
-        timeout: Timeout in seconds for Llama Stack client
+        timeout: Timeout in seconds for Llama Stack httpx client and judge ChatOpenAI
+        judge_temperature: Temperature for the RAGAS judge LLM (ChatOpenAI)
+        judge_max_tokens: max_tokens for the RAGAS judge LLM
+        judge_max_retries: max_retries for the RAGAS judge LLM
     """
     import json
     import math
@@ -924,7 +927,7 @@ def run_ragas_evaluation(
             ragas_data.append(ragas_entry)
         return ragas_data
 
-    def _get_llama_stack_client(timeout=600):
+    def _get_llama_stack_client(timeout_sec=600):
         import httpx
         from llama_stack_client import LlamaStackClient
         host = os.environ.get("LLAMA_STACK_HOST")
@@ -935,7 +938,7 @@ def run_ragas_evaluation(
         if not port:
             raise ValueError("LLAMA_STACK_PORT must be set when using Llama Stack for evaluation")
         base_url = f"{'https' if secure else 'http'}://{host}:{port}"
-        http_client = httpx.Client(verify=False, timeout=timeout)
+        http_client = httpx.Client(verify=False, timeout=timeout_sec)
         return LlamaStackClient(base_url=base_url, http_client=http_client)
 
     class _LlamaStackEmbeddings:
@@ -973,7 +976,13 @@ def run_ragas_evaluation(
                 return resp
             raise RuntimeError(f"Unexpected embeddings response shape: {type(resp)}")
 
-    def _get_chat_openai_for_llama_stack(model_id_inner, temperature=0.0, max_tokens=4096, timeout=600, max_retries=2):
+    def _get_chat_openai_for_llama_stack(
+        model_id_inner,
+        timeout_sec: int,
+        judge_temperature: float,
+        judge_max_tokens: int,
+        judge_max_retries: int,
+    ):
         try:
             from langchain_openai import ChatOpenAI
         except ImportError as e:
@@ -992,15 +1001,28 @@ def run_ragas_evaluation(
             model=model_id_inner,
             api_key=api_key,
             base_url=base_url,
-            temperature=temperature,
-            max_tokens=max_tokens,      # was implicitly ~256–1024 depending on server default
-            timeout=timeout,            # also worth setting; aligns with the component's `timeout` arg
-            max_retries=max_retries,    # cheap insurance against transient TimeoutError
+            temperature=judge_temperature,
+            timeout=timeout_sec,
+            max_tokens=judge_max_tokens,
+            max_retries=judge_max_retries,
         )
 
-    def _get_llama_stack_llm_and_embeddings(model_id_inner, embedding_model_id_inner, timeout, temperature, max_tokens, max_retries):
-        client = _get_llama_stack_client(timeout=timeout)
-        llm = _get_chat_openai_for_llama_stack(model_id_inner, temperature=temperature, max_tokens=max_tokens, timeout=timeout, max_retries=max_retries)
+    def _get_llama_stack_llm_and_embeddings(
+        model_id_inner,
+        embedding_model_id_inner,
+        timeout_sec: int = 600,
+        judge_temperature: float = 0.0,
+        judge_max_tokens: int = 4096,
+        judge_max_retries: int = 2,
+    ):
+        client = _get_llama_stack_client(timeout_sec=timeout_sec)
+        llm = _get_chat_openai_for_llama_stack(
+            model_id_inner,
+            timeout_sec=timeout_sec,
+            judge_temperature=judge_temperature,
+            judge_max_tokens=judge_max_tokens,
+            judge_max_retries=judge_max_retries,
+        )
         embeddings = _LlamaStackEmbeddings(client, embedding_model_id_inner)
         return llm, embeddings
 
@@ -1072,7 +1094,12 @@ def run_ragas_evaluation(
         f"embeddings: {evaluation_embedding_model_id}"
     )
     llm, embeddings = _get_llama_stack_llm_and_embeddings(
-        evaluation_model_id, evaluation_embedding_model_id, timeout=timeout, temperature=temperature, max_tokens=max_tokens, max_retries=max_retries
+        evaluation_model_id,
+        evaluation_embedding_model_id,
+        timeout_sec=timeout,
+        judge_temperature=judge_temperature,
+        judge_max_tokens=judge_max_tokens,
+        judge_max_retries=judge_max_retries,
     )
 
     samples = [SingleTurnSample(**entry) for entry in ragas_data]
@@ -1201,9 +1228,9 @@ def pipeline(
     metrics: str = DEFAULT_METRICS,
     batch_size: int = 0,
     timeout: int = 600,
-    temperature: float = 0.0,
-    max_tokens: int = 4096,
-    max_retries: int = 2,
+    judge_temperature: float = 0.0,
+    judge_max_tokens: int = 4096,
+    judge_max_retries: int = 2,
     mlflow_tracking_uri: str = "https://mlflow.redhat-ods-applications.svc.cluster.local:8443",
     mlflow_workspace: str = "",
     mlflow_experiment_name: str = "ragas-scoring-experiment",
@@ -1214,6 +1241,7 @@ def pipeline(
 
     model_id: LLM used to generate the RAGAS dataset (Responses API with file_search).
     evaluation_model_id: LLM used as RAGAS judge for scoring metrics (can be the same or different).
+    judge_temperature / judge_max_tokens / judge_max_retries: ChatOpenAI settings for that judge.
     agent_type: Agent backend ("default" or "lang-graph").
     pattern: Execution pattern ("simple" or "plan_execute").
     DAG:
@@ -1330,11 +1358,11 @@ def pipeline(
         evaluation_embedding_model_id=evaluation_embedding_model_id,
         metrics=metrics,
         batch_size=batch_size,
-        timeout=timeout,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        max_retries=max_retries,
         show_progress=True,
+        timeout=timeout,
+        judge_temperature=judge_temperature,
+        judge_max_tokens=judge_max_tokens,
+        judge_max_retries=judge_max_retries,
     )
     evaluate_task.after(generate_task)
     kubernetes.use_config_map_as_env(
