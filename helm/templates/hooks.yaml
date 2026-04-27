@@ -442,9 +442,11 @@ spec:
           INTERNAL_OC_URL="https://downloads-openshift-console.openshift-console.svc.cluster.local/amd64/linux/oc.tar"
           EXTERNAL_OC_URL="https://downloads-openshift-console.${INGRESS_DOMAIN}/amd64/linux/oc.tar"
           
-          if curl -sS --fail -kL "${INTERNAL_OC_URL}" | tar -x -C /tmp oc; then
+          if curl -sS --fail -kL "${INTERNAL_OC_URL}" -o /tmp/oc.tar; then
+            tar -x -f /tmp/oc.tar -C /tmp oc
             echo "Downloaded oc from internal service"
-          elif [ -n "${INGRESS_DOMAIN}" ] && curl -sS --fail -kL "${EXTERNAL_OC_URL}" | tar -x -C /tmp oc; then
+          elif [ -n "${INGRESS_DOMAIN}" ] && curl -sS --fail -kL "${EXTERNAL_OC_URL}" -o /tmp/oc.tar; then
+            tar -x -f /tmp/oc.tar -C /tmp oc
             echo "Downloaded oc from external route: ${EXTERNAL_OC_URL}"
           else
             echo "❌ ERROR: Failed to download oc from internal service and external route"
@@ -489,6 +491,17 @@ spec:
             echo "❌ ERROR: Could not get DSPA host"
             exit 1
           fi
+
+          # Prefer in-cluster DSPA endpoint and configure KFP TLS settings.
+          KFP_ENDPOINT="https://ds-pipeline-dspa.${DATA_SCIENCE_PROJECT_NAMESPACE}.svc:8443"
+          if [ -f "/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt" ]; then
+            export KFP_SSL_CA_CERT="/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt"
+            echo "Using KFP SSL CA cert: ${KFP_SSL_CA_CERT}"
+            export KFP_VERIFY_SSL="${KFP_VERIFY_SSL:-true}"
+          else
+            echo "⚠ WARNING: service-ca.crt not found, defaulting KFP_VERIFY_SSL=false"
+            export KFP_VERIFY_SSL="${KFP_VERIFY_SSL:-false}"
+          fi
           
           # Process each pipeline
           echo ""
@@ -512,9 +525,9 @@ spec:
             
             echo ""
             echo "--- Processing pipeline: ${PIPELINE} ---"
-            echo "Running: uv run python ${PIPELINE_FILE} ${TOKEN:+<token>} https://${DSPA_HOST}"
+            echo "Running: uv run python ${PIPELINE_FILE} ${TOKEN:+<token>} ${KFP_ENDPOINT}"
             
-            uv run python "${PIPELINE_FILE}" "${TOKEN}" "https://${DSPA_HOST}"
+            uv run python "${PIPELINE_FILE}" "${TOKEN}" "${KFP_ENDPOINT}"
             
             if [ $? -eq 0 ]; then
               echo "✓ Successfully processed pipeline: ${PIPELINE}"
@@ -777,6 +790,17 @@ spec:
             echo "Installing Python dependencies from requirements.txt..."
             uv pip install -r requirements.txt
           fi
+
+          # Use in-cluster DSPA endpoint and optional service CA for KFP client TLS.
+          export KFP_ENDPOINT="https://ds-pipeline-dspa.{{ .Release.Namespace }}.svc:8443"
+          if [ -f "/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt" ]; then
+            export KFP_SSL_CA_CERT="/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt"
+            echo "Using KFP SSL CA cert: ${KFP_SSL_CA_CERT}"
+            export KFP_VERIFY_SSL="${KFP_VERIFY_SSL:-true}"
+          else
+            echo "⚠ WARNING: service-ca.crt not found, defaulting KFP_VERIFY_SSL=false"
+            export KFP_VERIFY_SSL="${KFP_VERIFY_SSL:-false}"
+          fi
           
           # Run the pipeline runner script
           echo ""
@@ -927,6 +951,18 @@ spec:
           elif [ -f "requirements.txt" ]; then
             uv pip install -r requirements.txt
           fi
+
+          # Use in-cluster DSPA endpoint and optional service CA for KFP client TLS.
+          export KFP_ENDPOINT="https://ds-pipeline-dspa.{{ .Release.Namespace }}.svc:8443"
+          if [ -f "/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt" ]; then
+            export KFP_SSL_CA_CERT="/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt"
+            echo "Using KFP SSL CA cert: ${KFP_SSL_CA_CERT}"
+            export KFP_VERIFY_SSL="${KFP_VERIFY_SSL:-true}"
+          else
+            echo "⚠ WARNING: service-ca.crt not found, defaulting KFP_VERIFY_SSL=false"
+            export KFP_VERIFY_SSL="${KFP_VERIFY_SSL:-false}"
+          fi
+
           echo ""
           echo "=== Running ragas_pipeline_scheduler.py ==="
           uv run python ragas_pipeline_scheduler.py \

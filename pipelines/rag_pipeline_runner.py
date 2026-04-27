@@ -38,9 +38,8 @@ import os
 import sys
 import time
 
-import kfp
-
 from shared.kubeflow import (
+    create_kfp_client,
     get_token,
     get_route_host,
     get_pipeline_id_by_name,
@@ -187,7 +186,7 @@ def main():
     
     # Create KFP client
     try:
-        client = kfp.Client(host=kfp_endpoint, existing_token=token)
+        client = create_kfp_client(host=kfp_endpoint, token=token)
     except Exception as e:
         print(f"ERROR: Failed to create KFP client: {e}")
         sys.exit(1)

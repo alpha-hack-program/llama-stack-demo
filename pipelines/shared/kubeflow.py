@@ -16,6 +16,36 @@ from kfp.dsl import base_component
 # Get token path from environment or default to kubernetes token location
 TOKEN_PATH = os.environ.get("TOKEN_PATH", "/var/run/secrets/kubernetes.io/serviceaccount/token")
 
+
+def create_kfp_client(host: str, token: str) -> kfp_cli.Client:
+    """Create a KFP client with optional TLS controls from env vars.
+
+    Supported env vars:
+    - KFP_SSL_CA_CERT: path to CA bundle used to validate KFP endpoint TLS cert.
+    - KFP_VERIFY_SSL: true/false (default true). Set false to skip TLS validation.
+    """
+    verify_ssl = os.environ.get("KFP_VERIFY_SSL", "true").strip().lower() not in ("false", "0", "no")
+    ssl_ca_cert = os.environ.get("KFP_SSL_CA_CERT", "").strip()
+
+    kwargs = {
+        "host": host,
+        "existing_token": token,
+        "verify_ssl": verify_ssl,
+    }
+    if ssl_ca_cert:
+        kwargs["ssl_ca_cert"] = ssl_ca_cert
+
+    try:
+        return kfp.Client(**kwargs)
+    except TypeError:
+        # Backward compatibility with kfp versions that don't expose
+        # verify_ssl/ssl_ca_cert in Client constructor.
+        fallback_kwargs = {
+            "host": host,
+            "existing_token": token,
+        }
+        return kfp.Client(**fallback_kwargs)
+
 # Get the service account token or return None
 def get_token():
     try:
@@ -190,7 +220,7 @@ def compile_and_upsert_pipeline(
 
     # If both kfp_endpoint and token are provided, upload the pipeline
     if kfp_endpoint and token:
-        client = kfp.Client(host=kfp_endpoint, existing_token=token)
+        client = create_kfp_client(host=kfp_endpoint, token=token)
 
         # If endpoint doesn't have a protocol (http or https), add https
         if not kfp_endpoint.startswith("http"):
