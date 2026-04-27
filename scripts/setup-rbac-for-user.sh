@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+# Per-namespace workshop RBAC: configmap-patcher bindings, MLflow pipeline-runner
+# Role/RoleBinding, and OTel Python auto-instrumentation namespace annotation.
+# Requires shared configmap-patcher cluster resources from
+# setup-rbac-configmap-patcher-cluster.sh (and typically run after the namespace exists).
+# Run as cluster-admin.
+#
+# Usage: setup-rbac-for-user.sh [--dry-run] <namespace>
+# Env:   CUSTOM_PROJECT  Prefix for OTel annotation (default: llama-stack-demo)
+#
+# When invoked from setup-rbac.sh, DRY_RUN may be set in the environment (0/1) instead
+# of passing --dry-run on the command line.
+
+set -euo pipefail
+
+CUSTOM_PROJECT="${CUSTOM_PROJECT:-llama-stack-demo}"
+ODS_NS="redhat-ods-applications"
+SA_NAME="configmap-patcher"
+CR_NAME="configmap-patcher-ingress-reader"
+ROLE_NAME="configmap-patcher-mcp-servers"
+
+usage() {
+  echo "Usage: $0 [--dry-run] <namespace>" >&2
+  echo "  Applies per-namespace configmap-patcher + MLflow RBAC and OTel namespace annotation." >&2
+  echo "Optional env: CUSTOM_PROJECT (default: llama-stack-demo)" >&2
+  exit 1
+}
+
+DRY_RUN="${DRY_RUN:-0}"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run) DRY_RUN=1; shift ;;
+    -*) echo "Error: unknown option: $1" >&2; usage ;;
+    *) break ;;
+  esac
+done
+
+PROJECT="${1:-}"
+if [[ -z "$PROJECT" ]]; then
+  echo "Error: namespace is required." >&2
+  usage
+fi
+shift
+if [[ $# -gt 0 ]]; then
+  echo "Error: too many arguments." >&2
+  usage
+fi
+
+run() {
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "[dry-run] $*"
+  else
+    "$@"
+  fi
+}
+
+if [[ "$DRY_RUN" -eq 0 ]]; then
+  if ! command -v oc &>/dev/null; then
+    echo "Error: oc (OpenShift CLI) is required." >&2
+    exit 2
+  fi
+  if ! oc whoami &>/dev/null; then
+    echo "Error: you are not logged into OpenShift. Run 'oc login' and try again." >&2
+    exit 2
+  fi
+fi
+
+CRB_NAME="${CR_NAME}-${PROJECT}"
+RB_NAME="configmap-patcher-${PROJECT}"
+
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  echo "  Would create ClusterRoleBinding ${CRB_NAME}, RoleBinding ${RB_NAME} in ${ODS_NS}, MLflow Role+RoleBinding in ${PROJECT}, and annotate for OTel Python"
+  exit 0
+fi
+
+if ! oc get project "$PROJECT" &>/dev/null; then
+  echo "  Warning: namespace ${PROJECT} does not exist; skipping." >&2
+  exit 0
+fi
+
+# ClusterRoleBinding: bind ClusterRole to configmap-patcher SA in user namespace
+run oc apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ${CRB_NAME}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ${CR_NAME}
+subjects:
+  - kind: ServiceAccount
+    name: ${SA_NAME}
+    namespace: ${PROJECT}
+EOF
+
+# RoleBinding in redhat-ods-applications (binds shared Role to SA in user namespace)
+run oc apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ${RB_NAME}
+  namespace: ${ODS_NS}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ${ROLE_NAME}
+subjects:
+  - kind: ServiceAccount
+    name: ${SA_NAME}
+    namespace: ${PROJECT}
+EOF
+
+# MLflow Role in user namespace (pipeline-runner-dspa access to mlflow.kubeflow.org resources)
+run oc apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pipeline-runner-dspa-mlflow
+  namespace: ${PROJECT}
+rules:
+- apiGroups:
+  - mlflow.kubeflow.org
+  resources:
+  - experiments
+  - registeredmodels
+  - jobs
+  - runs
+  verbs:
+  - get
+  - list
+  - create
+  - update
+  - patch
+  - delete
+EOF
+
+# MLflow RoleBinding in user namespace
+run oc apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pipeline-runner-dspa-mlflow
+  namespace: ${PROJECT}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pipeline-runner-dspa-mlflow
+subjects:
+- kind: ServiceAccount
+  name: pipeline-runner-dspa
+  namespace: ${PROJECT}
+EOF
+
+echo "  Created RBAC for ${PROJECT}"
+
+# Annotate the namespace so the OTel Operator injects Python auto-instrumentation
+# into all pods (including those managed by the LlamaStackDistribution operator).
+# The Instrumentation CR named "${CUSTOM_PROJECT}-instrumentation" is created by the
+# Helm chart when otelCollector.enabled=true.
+run oc annotate namespace "$PROJECT" \
+  "instrumentation.opentelemetry.io/inject-python=${CUSTOM_PROJECT}-instrumentation" \
+  --overwrite
+echo "  Annotated namespace ${PROJECT} for OTel Python auto-instrumentation"
