@@ -27,8 +27,10 @@ This pipeline:
 4. Runs RAGAS evaluation metrics on the generated dataset
 """
 
-from kfp import kubernetes, dsl
+from kfp import dsl
 from kfp.dsl import Input, Output, Dataset, Metrics
+
+from shared.pipeline_egress import apply_rag_configmap_as_env
 
 # Workbench Runtime Image: Pytorch with Python 3.12 (UBI 9)
 PYTORCH_IMAGE = "quay.io/modh/odh-pipeline-runtime-pytorch-cuda-py312-ubi9@sha256:72ff2381e5cb24d6f549534cb74309ed30e92c1ca80214669adb78ad30c5ae12"
@@ -1257,6 +1259,7 @@ def pipeline(
         git_ref=git_ref,
         base_dataset_filename=base_dataset_filename,
     )
+    apply_rag_configmap_as_env(load_task)
     load_task.set_caching_options(True)
     load_task.set_cpu_request("100m")
     load_task.set_cpu_limit("1")
@@ -1264,15 +1267,7 @@ def pipeline(
     load_task.set_memory_limit("512Mi")
 
     resolve_task = resolve_vector_store(vector_store_name=vector_store_name)
-    kubernetes.use_config_map_as_env(
-        task=resolve_task,
-        config_map_name="rag-pipeline-config",
-        config_map_key_to_env={
-            "LLAMA_STACK_HOST": "LLAMA_STACK_HOST",
-            "LLAMA_STACK_PORT": "LLAMA_STACK_PORT",
-            "LLAMA_STACK_SECURE": "LLAMA_STACK_SECURE",
-        },
-    )
+    apply_rag_configmap_as_env(resolve_task)
     resolve_task.set_caching_options(False)
     resolve_task.set_cpu_request("100m")
     resolve_task.set_cpu_limit("1")
@@ -1280,15 +1275,7 @@ def pipeline(
     resolve_task.set_memory_limit("512Mi")
 
     discover_task = discover_mcp_tools(tools=tools)
-    kubernetes.use_config_map_as_env(
-        task=discover_task,
-        config_map_name="rag-pipeline-config",
-        config_map_key_to_env={
-            "LLAMA_STACK_HOST": "LLAMA_STACK_HOST",
-            "LLAMA_STACK_PORT": "LLAMA_STACK_PORT",
-            "LLAMA_STACK_SECURE": "LLAMA_STACK_SECURE",
-        },
-    )
+    apply_rag_configmap_as_env(discover_task)
     discover_task.set_caching_options(False)
     discover_task.set_cpu_request("100m")
     discover_task.set_cpu_limit("1")
@@ -1300,6 +1287,7 @@ def pipeline(
         mlflow_workspace=mlflow_workspace,
         mlflow_insecure_tls=mlflow_insecure_tls,
     )
+    apply_rag_configmap_as_env(verify_mlflow_task)
     verify_mlflow_task.set_caching_options(False)
     verify_mlflow_task.set_cpu_request("100m")
     verify_mlflow_task.set_cpu_limit("1")
@@ -1314,6 +1302,7 @@ def pipeline(
         mlflow_tracking_uri_param=mlflow_tracking_uri,
     )
     create_mlflow_experiment_task.after(verify_mlflow_task)
+    apply_rag_configmap_as_env(create_mlflow_experiment_task)
     create_mlflow_experiment_task.set_caching_options(False)
     create_mlflow_experiment_task.set_cpu_request("100m")
     create_mlflow_experiment_task.set_cpu_limit("1")
@@ -1337,15 +1326,7 @@ def pipeline(
         pattern=pattern,
     )
     generate_task.after(load_task, resolve_task, discover_task, verify_mlflow_task)
-    kubernetes.use_config_map_as_env(
-        task=generate_task,
-        config_map_name="rag-pipeline-config",
-        config_map_key_to_env={
-            "LLAMA_STACK_HOST": "LLAMA_STACK_HOST",
-            "LLAMA_STACK_PORT": "LLAMA_STACK_PORT",
-            "LLAMA_STACK_SECURE": "LLAMA_STACK_SECURE",
-        },
-    )
+    apply_rag_configmap_as_env(generate_task)
     generate_task.set_caching_options(False)
     generate_task.set_cpu_request("500m")
     generate_task.set_cpu_limit("4")
@@ -1365,15 +1346,7 @@ def pipeline(
         judge_max_retries=judge_max_retries,
     )
     evaluate_task.after(generate_task)
-    kubernetes.use_config_map_as_env(
-        task=evaluate_task,
-        config_map_name="rag-pipeline-config",
-        config_map_key_to_env={
-            "LLAMA_STACK_HOST": "LLAMA_STACK_HOST",
-            "LLAMA_STACK_PORT": "LLAMA_STACK_PORT",
-            "LLAMA_STACK_SECURE": "LLAMA_STACK_SECURE",
-        },
-    )
+    apply_rag_configmap_as_env(evaluate_task)
     evaluate_task.set_caching_options(False)
     evaluate_task.set_cpu_request("500m")
     evaluate_task.set_cpu_limit("4")
@@ -1389,6 +1362,7 @@ def pipeline(
         mlflow_tracking_uri_param=mlflow_tracking_uri,
     )
     log_mlflow_task.after(evaluate_task, create_mlflow_experiment_task)
+    apply_rag_configmap_as_env(log_mlflow_task)
     log_mlflow_task.set_caching_options(False)
     log_mlflow_task.set_cpu_request("100m")
     log_mlflow_task.set_cpu_limit("1")

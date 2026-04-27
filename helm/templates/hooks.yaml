@@ -9,9 +9,30 @@ metadata:
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/part-of: {{ .Values.partOf }}
 data:
-  LLAMA_STACK_HOST: "{{ .Values.app }}-service"
+  LLAMA_STACK_HOST: "{{ .Values.app }}-service.{{ .Release.Namespace }}.svc.cluster.local"
   LLAMA_STACK_PORT: {{ .Values.lsdPort | toString | quote }}
   LLAMA_STACK_SECURE: "False"
+  {{- with .Values.http_proxy }}
+  HTTP_PROXY: {{ . | quote }}
+  http_proxy: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.https_proxy }}
+  HTTPS_PROXY: {{ . | quote }}
+  https_proxy: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.no_proxy }}
+  NO_PROXY: {{ . | quote }}
+  no_proxy: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.pip_index_url }}
+  PIP_INDEX_URL: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.pip_extra_index_url }}
+  PIP_EXTRA_INDEX_URL: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.pip_trusted_host }}
+  PIP_TRUSTED_HOST: {{ . | quote }}
+  {{- end }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -32,7 +53,7 @@ data:
   SCORE_THRESHOLD: "{{ .Values.lsdScoreThreshold }}"
   MAX_NUM_RESULTS: "{{ .Values.lsdMaxNumResults }}"
   TEST_QUERY: "{{ .Values.lsdTestQuery }}"
-  LLAMA_STACK_HOST: "{{ .Values.app }}-service"
+  LLAMA_STACK_HOST: "{{ .Values.app }}-service.{{ .Release.Namespace }}.svc.cluster.local"
   LLAMA_STACK_PORT: {{ .Values.lsdPort | toString | quote }}
   LLAMA_STACK_SECURE: "False"
   DOCS_FOLDER: "{{ .Values.docsFolder }}"
@@ -146,7 +167,7 @@ spec:
             exit 1
           fi
         env:
-        {{- include "rag-lsd.hookProxyEnv" . | nindent 8 }}
+        {{- include "rag-lsd.hookEgressEnv" . | nindent 8 }}
         # Environment variables for configuration
         - name: DEPLOYMENT_NAME
           value: "{{ .Values.app }}"
@@ -309,7 +330,7 @@ spec:
           oc get configmap "$CONFIGMAP_NAME" -n "$TARGET_NAMESPACE" -o yaml | grep -A 100 "^data:" | head -20
           
         env:
-        {{- include "rag-lsd.hookProxyEnv" . | nindent 8 }}
+        {{- include "rag-lsd.hookEgressEnv" . | nindent 8 }}
         - name: CONFIGMAP_NAME
           value: "gen-ai-aa-mcp-servers"
         - name: TARGET_NAMESPACE
@@ -403,7 +424,7 @@ spec:
             echo "❌ ERROR: Failed to reach DSPA API after ${MAX_RETRIES} attempts"
             exit 1
         env:
-        {{- include "rag-lsd.hookProxyEnv" . | nindent 8 }}
+        {{- include "rag-lsd.hookEgressEnv" . | nindent 8 }}
         - name: DATA_SCIENCE_PROJECT_NAMESPACE
           value: {{ .Release.Namespace | quote }}
       containers:
@@ -540,7 +561,7 @@ spec:
           echo ""
           echo "=== All pipelines processed successfully ==="
         env:
-        {{- include "rag-lsd.hookProxyEnv" . | nindent 8 }}
+        {{- include "rag-lsd.hookEgressEnv" . | nindent 8 }}
         - name: GIT_REPO
           value: {{ .Values.pipelines.git.repo | quote }}
         - name: GIT_REF
@@ -739,7 +760,7 @@ spec:
             echo "❌ ERROR: Failed to reach DSPA API after ${MAX_RETRIES} attempts"
             exit 1
         env:
-        {{- include "rag-lsd.hookProxyEnv" . | nindent 8 }}
+        {{- include "rag-lsd.hookEgressEnv" . | nindent 8 }}
         - name: DATA_SCIENCE_PROJECT_NAMESPACE
           value: {{ .Release.Namespace | quote }}
       containers:
@@ -828,7 +849,7 @@ spec:
             --chunk-overlap-in-tokens "${PIPELINE_CHUNK_OVERLAP_IN_TOKENS}" \
             ${GPU_FLAG}
         env:
-        {{- include "rag-lsd.hookProxyEnv" . | nindent 8 }}
+        {{- include "rag-lsd.hookEgressEnv" . | nindent 8 }}
         - name: GIT_REPO
           value: {{ .Values.pipelines.git.repo | quote }}
         - name: GIT_REF
@@ -919,7 +940,7 @@ spec:
             echo "❌ ERROR: Failed to reach DSPA API after ${MAX_RETRIES} attempts"
             exit 1
         env:
-        {{- include "rag-lsd.hookProxyEnv" . | nindent 8 }}
+        {{- include "rag-lsd.hookEgressEnv" . | nindent 8 }}
         - name: DATA_SCIENCE_PROJECT_NAMESPACE
           value: {{ .Release.Namespace | quote }}
       containers:
@@ -1001,7 +1022,7 @@ spec:
           echo ""
           echo "=== RAGAS scheduler finished successfully ==="
         env:
-        {{- include "rag-lsd.hookProxyEnv" . | nindent 8 }}
+        {{- include "rag-lsd.hookEgressEnv" . | nindent 8 }}
         - name: GIT_REPO
           value: {{ .Values.pipelines.git.repo | quote }}
         - name: GIT_REF

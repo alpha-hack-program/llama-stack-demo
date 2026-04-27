@@ -70,3 +70,29 @@ when set (e.g. | nindent 8 after a container env: key).
   value: {{ . | quote }}
 {{- end }}
 {{- end -}}
+
+{{/*
+Optional pip / PyPI settings for jobs and KFP step pods (same as rag-pipeline-config when set).
+*/}}
+{{- define "rag-lsd.hookPipEgressEnv" -}}
+{{- with .Values.pip_index_url }}
+- name: PIP_INDEX_URL
+  value: {{ . | quote }}
+{{- end }}
+{{- with .Values.pip_extra_index_url }}
+- name: PIP_EXTRA_INDEX_URL
+  value: {{ . | quote }}
+{{- end }}
+{{- with .Values.pip_trusted_host }}
+- name: PIP_TRUSTED_HOST
+  value: {{ . | quote }}
+{{- end }}
+{{- end -}}
+
+{{/*
+Proxy + pip env for hook Jobs and for compile-time pipeline upload (so ConfigMap keys match use_config_map_as_env).
+*/}}
+{{- define "rag-lsd.hookEgressEnv" -}}
+{{- include "rag-lsd.hookProxyEnv" . -}}
+{{- include "rag-lsd.hookPipEgressEnv" . -}}
+{{- end -}}

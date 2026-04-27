@@ -15,8 +15,10 @@
 # ruff: noqa: PLC0415,UP007,UP035,UP006,E712
 # SPDX-License-Identifier: Apache-2.0
 
-from kfp import kubernetes, dsl
+from kfp import dsl
 from kfp.kubernetes import add_node_selector_json, add_toleration_json
+
+from shared.pipeline_egress import apply_rag_configmap_as_env
 
 
 # Workbench Runtime Image: Pytorch with CUDA and Python 3.12 (UBI 9)
@@ -265,15 +267,7 @@ def pipeline(
             git_ref=git_ref,
             filenames=filenames,
         )
-        # Set the kubernetes config map to be used in the register_task task
-        kubernetes.use_config_map_as_env(
-            task=register_task,
-            config_map_name='rag-pipeline-config',
-            config_map_key_to_env={
-                'LLAMA_STACK_HOST': 'LLAMA_STACK_HOST',
-                'LLAMA_STACK_PORT': 'LLAMA_STACK_PORT',
-                'LLAMA_STACK_SECURE': 'LLAMA_STACK_SECURE'
-            })
+        apply_rag_configmap_as_env(register_task)
         # Set the caching options, resource requests and limits for the register_task task
         register_task.set_caching_options(False)
         register_task.set_cpu_request("500m")
@@ -308,15 +302,7 @@ def pipeline(
             git_ref=git_ref,
             filenames=filenames,
         )
-        # Set the kubernetes config map to be used in the register_task task
-        kubernetes.use_config_map_as_env(
-            task=register_task,
-            config_map_name='rag-pipeline-config',
-            config_map_key_to_env={
-                'LLAMA_STACK_HOST': 'LLAMA_STACK_HOST',
-                'LLAMA_STACK_PORT': 'LLAMA_STACK_PORT',
-                'LLAMA_STACK_SECURE': 'LLAMA_STACK_SECURE'
-            })
+        apply_rag_configmap_as_env(register_task)
         # Set the caching options, resource requests and limits for the register_task task
         register_task.set_caching_options(False)
         register_task.set_cpu_request("500m")
