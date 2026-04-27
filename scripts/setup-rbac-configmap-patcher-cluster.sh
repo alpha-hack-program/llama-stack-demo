@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Creates shared (cluster-wide) configmap-patcher RBAC: one ClusterRole for ingress
 # read and one Role in redhat-ods-applications for the gen-ai-aa-mcp-servers ConfigMap.
-# Per-namespace bindings are in setup-rbac-for-user.sh.
+# Per-namespace bindings are in setup-rbac-for-namespace.sh.
 # Run as cluster-admin.
 #
 # Usage: setup-rbac-configmap-patcher-cluster.sh [--dry-run]

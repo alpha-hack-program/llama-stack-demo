@@ -8,7 +8,7 @@
 # Implementation: delegates to
 #   - setup-rbac-configmap-patcher-cluster.sh (shared ClusterRole + ODS Role)
 #   - setup-rbac-argocd.sh (Argo CD application manager)
-#   - setup-rbac-for-user.sh (per ${CUSTOM_PROJECT}-userK namespace)
+#   - setup-rbac-for-namespace.sh (per project/namespace; e.g. ${CUSTOM_PROJECT}-userK)
 #
 # Configmap-patcher:
 #   ClusterRole: configmap-patcher-ingress-reader (shared)
@@ -84,7 +84,7 @@ echo ""
 
 for (( i = 1; i <= NUM_USERS; i++ )); do
   PROJECT="${CUSTOM_PROJECT}-user${i}"
-  "$SCRIPT_DIR/setup-rbac-for-user.sh" "$PROJECT"
+  "$SCRIPT_DIR/setup-rbac-for-namespace.sh" "$PROJECT"
 done
 
 echo ""

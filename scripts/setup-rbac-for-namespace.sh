@@ -3,9 +3,10 @@
 # Role/RoleBinding, and OTel Python auto-instrumentation namespace annotation.
 # Requires shared configmap-patcher cluster resources from
 # setup-rbac-configmap-patcher-cluster.sh (and typically run after the namespace exists).
-# Run as cluster-admin.
+# Run as cluster-admin. Argument is a project/namespace name (e.g. llama-stack-demo-user1
+# or any other namespace where the same RBAC is needed).
 #
-# Usage: setup-rbac-for-user.sh [--dry-run] <namespace>
+# Usage: setup-rbac-for-namespace.sh [--dry-run] <namespace>
 # Env:   CUSTOM_PROJECT  Prefix for OTel annotation (default: llama-stack-demo)
 #
 # When invoked from setup-rbac.sh, DRY_RUN may be set in the environment (0/1) instead
@@ -78,7 +79,7 @@ if ! oc get project "$PROJECT" &>/dev/null; then
   exit 0
 fi
 
-# ClusterRoleBinding: bind ClusterRole to configmap-patcher SA in user namespace
+# ClusterRoleBinding: bind ClusterRole to configmap-patcher SA in target namespace
 run oc apply -f - <<EOF
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -94,7 +95,7 @@ subjects:
     namespace: ${PROJECT}
 EOF
 
-# RoleBinding in redhat-ods-applications (binds shared Role to SA in user namespace)
+# RoleBinding in redhat-ods-applications (binds shared Role to SA in target namespace)
 run oc apply -f - <<EOF
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -111,7 +112,7 @@ subjects:
     namespace: ${PROJECT}
 EOF
 
-# MLflow Role in user namespace (pipeline-runner-dspa access to mlflow.kubeflow.org resources)
+# MLflow Role in target namespace (pipeline-runner-dspa access to mlflow.kubeflow.org resources)
 run oc apply -f - <<EOF
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -135,7 +136,7 @@ rules:
   - delete
 EOF
 
-# MLflow RoleBinding in user namespace
+# MLflow RoleBinding in target namespace
 run oc apply -f - <<EOF
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
