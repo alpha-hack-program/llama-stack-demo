@@ -32,6 +32,7 @@ spec:
           value: "1"
         - name: HF_TRUST_REMOTE_CODE
           value: "1"
+        {{- include "rag-lsd.hookProxyEnv" $ | nindent 8 }}
         {{- $appName := .Values.app }}
         {{- $allModels := (include "allModels" $ | fromYaml).items }}
         {{- range $allModels }}

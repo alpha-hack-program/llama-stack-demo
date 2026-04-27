@@ -47,8 +47,9 @@ Create a default fully qualified app name.
 {{- end }}
 
 {{/*
-Optional HTTP(S) proxy env for Helm hook Jobs. Include only .Values http_proxy, https_proxy, and/or no_proxy
-when set (e.g. | nindent 8 after a container env: key).
+Optional HTTP(S) proxy env from .Values http_proxy, https_proxy, and/or no_proxy when set.
+Used for Helm hook Jobs, LlamaStackDistribution server env (lsd.yaml), and KServe ServingRuntime (models.yaml);
+pipe through | nindent 8 under container env:.
 */}}
 {{- define "rag-lsd.hookProxyEnv" -}}
 {{- with .Values.http_proxy }}

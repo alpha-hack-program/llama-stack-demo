@@ -2,7 +2,8 @@
 app: llama-stack-demo
 partOf: llama-stack-demo
 
-# Outbound HTTP proxy for Helm post-install/upgrade hook Jobs in templates/hooks.yaml (optional).
+# Outbound HTTP proxy for Helm post-install/upgrade hook Jobs (hooks.yaml), LlamaStackDistribution (lsd.yaml),
+# and KServe ServingRuntime (models.yaml) when you set the keys below (optional).
 # Only uncomment and set the keys you need; unset keys are not added as environment variables.
 # http_proxy: "http://user:pass@proxy.example.com:8080"
 # https_proxy: "http://user:pass@proxy.example.com:8080"

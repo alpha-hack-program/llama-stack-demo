@@ -195,6 +195,7 @@ spec:
           value: /tmp/hf_home
         - name: VLLM_CACHE_ROOT
           value: /tmp
+        {{- include "rag-lsd.hookProxyEnv" $ | nindent 8 }}
         {{- if .env }}
         {{- range .env }}
         - name: {{ .name }}
