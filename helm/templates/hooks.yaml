@@ -425,10 +425,29 @@ spec:
             pip install --quiet gitpython 2>/dev/null || dnf install -y git > /dev/null 2>&1 || apt-get update && apt-get install -y git > /dev/null 2>&1
           fi
           
-          # Download and install oc CLI
+          # Download and install oc CLI from console downloads service/route
           echo "Installing OpenShift CLI..."
-          OC_VERSION="4.14.0"
-          curl -sL "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/${OC_VERSION}/openshift-client-linux.tar.gz" | tar -xz -C /tmp
+          KUBE_API="https://kubernetes.default.svc"
+          SA_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+          OAUTH_METADATA="$(
+            curl -sS --fail --cacert "${SA_CA}" \
+              "${KUBE_API}/.well-known/oauth-authorization-server" || true
+          )"
+          OAUTH_ISSUER="$(echo "${OAUTH_METADATA}" | sed -n 's|.*"issuer"[[:space:]]*:[[:space:]]*"\([^"]*\)".*|\1|p')"
+          INGRESS_DOMAIN="$(echo "${OAUTH_ISSUER}" | sed -n 's|https\?://oauth-openshift\.\(.*\)|\1|p')"
+          
+          INTERNAL_OC_URL="https://downloads-openshift-console.openshift-console.svc.cluster.local/amd64/linux/oc.tar"
+          EXTERNAL_OC_URL="https://downloads-openshift-console.${INGRESS_DOMAIN}/amd64/linux/oc.tar"
+          
+          if curl -sS --fail -kL "${INTERNAL_OC_URL}" | tar -x -C /tmp oc; then
+            echo "Downloaded oc from internal service"
+          elif [ -n "${INGRESS_DOMAIN}" ] && curl -sS --fail -kL "${EXTERNAL_OC_URL}" | tar -x -C /tmp oc; then
+            echo "Downloaded oc from external route: ${EXTERNAL_OC_URL}"
+          else
+            echo "❌ ERROR: Failed to download oc from internal service and external route"
+            exit 1
+          fi
+          
           export PATH="/tmp:${PATH}"
           
           # Install uv package manager
