@@ -20,9 +20,10 @@ data:
   HTTPS_PROXY: {{ . | quote }}
   https_proxy: {{ . | quote }}
   {{- end }}
-  {{- with .Values.no_proxy }}
-  NO_PROXY: {{ . | quote }}
-  no_proxy: {{ . | quote }}
+  {{- $mergedNoProxy := include "rag-lsd.mergedNoProxy" . | trim -}}
+  {{- if $mergedNoProxy }}
+  NO_PROXY: {{ $mergedNoProxy | quote }}
+  no_proxy: {{ $mergedNoProxy | quote }}
   {{- end }}
   {{- with .Values.pip_index_url }}
   PIP_INDEX_URL: {{ . | quote }}

@@ -47,8 +47,38 @@ Create a default fully qualified app name.
 {{- end }}
 
 {{/*
+Effective NO_PROXY / no_proxy: .Values.no_proxy plus in-cluster service hostnames when a proxy is in use.
+
+Short names like "milvus-service" do not match "no_proxy" patterns such as .cluster.local or .svc, so
+gRPC (e.g. pymilvus) would otherwise try the HTTP proxy and fail. When http(s)_proxy is set, we append
+.postgres.host (when .Values.postgres) and .milvus.host (when .milvus.enableRemote).
+*/}}
+{{- define "rag-lsd.mergedNoProxy" -}}
+{{- $m := .Values.no_proxy | default "" -}}
+{{- if or .Values.http_proxy .Values.https_proxy -}}
+{{- if .Values.postgres -}}
+  {{- $ph := .Values.postgres.host | default "pg-lsd-service" -}}
+  {{- if $m -}}
+    {{- $m = printf "%s,%s" $m $ph -}}
+  {{- else -}}
+    {{- $m = $ph -}}
+  {{- end -}}
+{{- end -}}
+{{- if and .Values.milvus .Values.milvus.enableRemote -}}
+  {{- $mh := .Values.milvus.host | default "milvus-service" -}}
+  {{- if $m -}}
+    {{- $m = printf "%s,%s" $m $mh -}}
+  {{- else -}}
+    {{- $m = $mh -}}
+  {{- end -}}
+{{- end -}}
+{{- end -}}
+{{- $m -}}
+{{- end -}}
+
+{{/*
 Optional HTTP(S) proxy env from .Values http_proxy, https_proxy, and/or no_proxy when set.
-Used for Helm hook Jobs, LlamaStackDistribution server env (lsd.yaml), and KServe ServingRuntime (models.yaml);
+NO_PROXY uses rag-lsd.mergedNoProxy (see above). Used for hook Jobs, LSD (lsd.yaml), and models.yaml;
 pipe through | nindent 8 under container env:.
 */}}
 {{- define "rag-lsd.hookProxyEnv" -}}
@@ -64,7 +94,8 @@ pipe through | nindent 8 under container env:.
 - name: https_proxy
   value: {{ . | quote }}
 {{- end }}
-{{- with .Values.no_proxy }}
+{{- $n := include "rag-lsd.mergedNoProxy" . | trim -}}
+{{- with $n }}
 - name: NO_PROXY
   value: {{ . | quote }}
 - name: no_proxy
