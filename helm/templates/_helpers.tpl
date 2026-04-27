@@ -45,3 +45,28 @@ Create a default fully qualified app name.
 {{- end }}
 {{- end }}
 {{- end }}
+
+{{/*
+Optional HTTP(S) proxy env for Helm hook Jobs. Include only .Values http_proxy, https_proxy, and/or no_proxy
+when set (e.g. | nindent 8 after a container env: key).
+*/}}
+{{- define "rag-lsd.hookProxyEnv" -}}
+{{- with .Values.http_proxy }}
+- name: HTTP_PROXY
+  value: {{ . | quote }}
+- name: http_proxy
+  value: {{ . | quote }}
+{{- end }}
+{{- with .Values.https_proxy }}
+- name: HTTPS_PROXY
+  value: {{ . | quote }}
+- name: https_proxy
+  value: {{ . | quote }}
+{{- end }}
+{{- with .Values.no_proxy }}
+- name: NO_PROXY
+  value: {{ . | quote }}
+- name: no_proxy
+  value: {{ . | quote }}
+{{- end }}
+{{- end -}}
