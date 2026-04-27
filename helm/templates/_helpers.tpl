@@ -24,6 +24,17 @@ Wrapped in "items" key because fromYaml doesn't handle root-level lists.
 {{- end -}}
 
 {{/*
+In-cluster OpenAI-compatible /v1 base URL for the KServe predictor Service <model.name>-predictor in
+the release namespace. Pass (dict "root" $ "model" <model>) from a range over allModels. Use when
+model.url is unset so clients match no_proxy entries like .cluster.local (short names do not).
+*/}}
+{{- define "rag-lsd.inClusterPredictorV1URL" -}}
+{{- $r := index . "root" -}}
+{{- $m := index . "model" -}}
+http://{{ $m.name }}-predictor.{{ $r.Release.Namespace }}.svc.{{ $r.Values.clusterDomain | default "cluster.local" }}:8080/v1
+{{- end -}}
+
+{{/*
 Expand the name of the chart.
 */}}
 {{- define "rag-lsd.name" -}}

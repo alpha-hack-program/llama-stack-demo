@@ -16,6 +16,9 @@ partOf: llama-stack-demo
 # pip_extra_index_url: ""
 # pip_trusted_host: "pypi.org files.pythonhosted.org"
 
+# Optional: cluster DNS zone for in-cluster service FQDNs (e.g. default model *_URL). Default: cluster.local
+# clusterDomain: cluster.local
+
 # Storage class for all PVCs (e.g. nfs-csi, standard, gp2)
 # storageClassName: nfs-csi
 
@@ -294,7 +297,8 @@ localModels:
   - name: qwen3-8b-fp8-dynamic-remote
     forcedName: qwen3-8b-fp8-dynamic
     strict: true
-    url: http://qwen3-8b-fp8-dynamic-predictor:8080/v1
+    # FQDN so HTTP(S)_PROXY + no_proxy (.cluster.local) can bypass the proxy; replace namespace with your install namespace
+    url: http://qwen3-8b-fp8-dynamic-predictor.llama-stack-demo.svc.cluster.local:8080/v1
     # api_token: sk-GTvjdDXORH2JXw4zX93osA
     maxModelLen: '25000' # vllm max model len
     maxTokens: '12000'

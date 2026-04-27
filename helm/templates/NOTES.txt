@@ -14,7 +14,7 @@ Models deployed:
 {{- $allModels := (include "allModels" . | fromYaml).items }}
 {{- range $allModels }}
 - {{ .name }}:
-    - URL: "{{ "http://" }}{{ .name }}-predictor:8080/v1"
+    - URL: "{{ if .url }}{{ .url }}{{ else }}{{ include "rag-lsd.inClusterPredictorV1URL" (dict "root" $ "model" .) }}{{ end }}"
     - MODEL: "{{ .name }}"
     - IMAGE: "{{ .image }}"
   {{- if and .runtime .runtime.image }}

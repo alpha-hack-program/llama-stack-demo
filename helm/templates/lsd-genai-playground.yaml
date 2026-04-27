@@ -78,7 +78,7 @@ data:
           {{- if .url }}
           url: {{ .url }}
           {{- else }}
-          url: http://{{ .name }}-predictor:8080/v1
+          url: {{ include "rag-lsd.inClusterPredictorV1URL" (dict "root" $ "model" .) }}
           {{- end }}
           {{- if .api_token }}
           api_token: {{ .api_token }}

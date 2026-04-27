@@ -25,7 +25,7 @@ data:
       - provider_id: {{ .name | replace " " "-" | lower }}
         provider_type: remote::vllm
         config:
-          base_url: ${env.{{ include "rag-lsd.envVarName" .name }}_URL:={{ if .url }}{{ .url }}{{ else }}http://{{ .name }}-predictor:8080/v1{{ end }}}
+          base_url: ${env.{{ include "rag-lsd.envVarName" .name }}_URL:={{ if .url }}{{ .url }}{{ else }}{{ include "rag-lsd.inClusterPredictorV1URL" (dict "root" $ "model" .) }}{{ end }}}
           model: ${env.{{ include "rag-lsd.envVarName" .name }}_MODEL:={{ if .forcedName }}{{ .forcedName }}{{ else }}{{ .name }}{{ end }}}
           {{- if .api_token }}
           api_token: ${env.{{ include "rag-lsd.envVarName" .name }}_API_TOKEN:=fake}
