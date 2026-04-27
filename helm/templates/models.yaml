@@ -15,7 +15,7 @@ metadata:
     serving.kserve.io/deploymentMode: RawDeployment
     serving.knative.openshift.io/enablePassthrough: 'true'
     opendatahub.io/hardware-profile-namespace: redhat-ods-applications
-    opendatahub.io/hardware-profile-name: nvidia
+    opendatahub.io/hardware-profile-name: {{ .hardwareProfile | default "nvidia" }}
     opendatahub.io/connections: {{ .name }}
     opendatahub.io/model-type: generative
     app.openshift.io/connects-to: '[{"apiVersion":"apps/v1","kind":"Deployment","name":"{{ $appName }}"}]'
@@ -35,6 +35,11 @@ spec:
   predictor:
     maxReplicas: {{ default 1 .maxReplicas }}
     minReplicas: 1
+    {{- if and .deploymentStrategy (not (or (eq .deploymentStrategy "RollingUpdate") (eq .deploymentStrategy "Recreate"))) }}
+    {{- fail (printf "model %q: deploymentStrategy must be RollingUpdate or Recreate, got %q" .name .deploymentStrategy) }}
+    {{- end }}
+    deploymentStrategy:
+      type: {{ default "RollingUpdate" .deploymentStrategy | quote }}
     model:
       modelFormat:
         name: {{ default "vLLM" .format }}
