@@ -2,7 +2,8 @@
 {{- $assigned := (include "assigned" . | fromYaml).value }}
 {{- $allModels := (include "allModels" . | fromYaml).items }}
 {{- range $allModels }}
-{{- if not .url }}
+{{/* "Remote" provider entries (e.g. *-remote, forcedName) re-use an existing IS and have no image/connection */}}
+{{- if and (not .url) (or .image .connection) }}
 ---
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService

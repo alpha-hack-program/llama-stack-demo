@@ -295,10 +295,10 @@ localModels:
   #     - --chat-template
   #     - /opt/app-root/template/tool_chat_template_llama3.1_json.jinja
   - name: qwen3-8b-fp8-dynamic-remote
+    # forcedName selects the existing predictor Service (qwen3-8b-fp8-dynamic); omit url for FQDN in release namespace
     forcedName: qwen3-8b-fp8-dynamic
     strict: true
-    # FQDN so HTTP(S)_PROXY + no_proxy (.cluster.local) can bypass the proxy; replace namespace with your install namespace
-    url: http://qwen3-8b-fp8-dynamic-predictor.llama-stack-demo.svc.cluster.local:8080/v1
+    # url: set only for off-cluster or custom endpoints
     # api_token: sk-GTvjdDXORH2JXw4zX93osA
     maxModelLen: '25000' # vllm max model len
     maxTokens: '12000'
