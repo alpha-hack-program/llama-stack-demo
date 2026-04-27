@@ -691,7 +691,7 @@ spec:
             
             # Wait for Llama Stack to be ready
             echo "=== Llama Stack Health Check ==="
-            LLAMA_STACK_URL="http://{{ .Values.app }}-service:{{ .Values.lsdPort }}/docs"
+            LLAMA_STACK_URL="http://{{ .Values.app }}-service.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.lsdPort }}/docs"
             echo "Waiting for Llama Stack at ${LLAMA_STACK_URL}..."
             for i in $(seq 1 ${MAX_RETRIES}); do
               echo "Attempt ${i}/${MAX_RETRIES}: Checking Llama Stack..."
