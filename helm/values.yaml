@@ -5,9 +5,9 @@ partOf: llama-stack-demo
 # Outbound HTTP proxy for Helm post-install/upgrade hook Jobs (hooks.yaml), LlamaStackDistribution (lsd.yaml),
 # and KServe ServingRuntime (models.yaml) when you set the keys below (optional).
 # Only uncomment and set the keys you need; unset keys are not added as environment variables.
-http_proxy: "http://user:pass@proxy.example.com:8080"
-https_proxy: "http://user:pass@proxy.example.com:8080"
-no_proxy: "localhost,127.0.0.1,.cluster.local,.svc,10.0.0.0/8,169.254.169.254"
+# http_proxy: "http://user:pass@proxy.example.com:8080"
+# https_proxy: "http://user:pass@proxy.example.com:8080"
+# no_proxy: "localhost,127.0.0.1,.cluster.local,.svc,10.0.0.0/8,169.254.169.254"
 # When http_proxy or https_proxy is set, the chart also appends postgres.host and milvus.host (if
 # enableRemote) to NO_PROXY so in-cluster gRPC/DB (e.g. pymilvus to milvus-service) does not go through
 # the HTTP proxy. Unqualified hostnames in MILVUS_ENDPOINT/POSTGRES are not covered by .cluster.local alone.
