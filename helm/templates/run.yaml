@@ -310,7 +310,7 @@ data:
       - toolgroup_id: mcp::{{ .id }}
         provider_id: {{ .provider_id }}
         mcp_endpoint:
-          uri: {{ .protocol }}://{{ .host }}:{{ .port }}{{ .uri }}
+          uri: {{ include "rag-lsd.inClusterMcpURI" (dict "root" $ "server" .) }}
       {{- end }}
     vector_stores:
       annotation_prompt_params:

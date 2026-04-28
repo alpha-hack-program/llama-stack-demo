@@ -38,6 +38,18 @@ http://{{ $base }}-predictor.{{ $r.Release.Namespace }}.svc.{{ $r.Values.cluster
 {{- end -}}
 
 {{/*
+In-cluster MCP endpoint URI for a server entry in .Values.mcpServers.
+Pass (dict "root" $ "server" <mcpServer>) from ranges over mcpServers.
+*/}}
+{{- define "rag-lsd.inClusterMcpURI" -}}
+{{- $r := index . "root" -}}
+{{- $s := index . "server" -}}
+{{- $protocol := $s.protocol | default "http" -}}
+{{- $uri := $s.uri | default "" -}}
+{{ $protocol }}://{{ $s.host }}.{{ $r.Release.Namespace }}.svc.{{ $r.Values.clusterDomain | default "cluster.local" }}:{{ $s.port }}{{ $uri }}
+{{- end -}}
+
+{{/*
 Expand the name of the chart.
 */}}
 {{- define "rag-lsd.name" -}}
