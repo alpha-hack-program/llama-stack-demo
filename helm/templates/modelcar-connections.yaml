@@ -1,6 +1,6 @@
 {{- $allModels := (include "allModels" . | fromYaml).items }}
 {{- range $allModels }}
-{{- if not .url }}
+{{- if and (include "rag-lsd.modelUsesKserve" . | trim) .image }}
 ---
 kind: Secret
 apiVersion: v1

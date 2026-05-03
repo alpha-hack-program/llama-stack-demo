@@ -14,9 +14,16 @@ Models deployed:
 {{- $allModels := (include "allModels" . | fromYaml).items }}
 {{- range $allModels }}
 - {{ .name }}:
+  {{- if eq (default "" .providerType) "inline::sentence-transformers" }}
+    - Provider: inline::sentence-transformers (Hugging Face)
+    {{- if .model }}
+    - HF model: "{{ .model }}"
+    {{- end }}
+  {{- else }}
     - URL: "{{ if .url }}{{ .url }}{{ else }}{{ include "rag-lsd.inClusterPredictorV1URL" (dict "root" $ "model" .) }}{{ end }}"
     - MODEL: "{{ .name }}"
     - IMAGE: "{{ .image }}"
+  {{- end }}
   {{- if and .runtime .runtime.image }}
     - RUNTIME: "{{ .runtime.image }}"
   {{- end }}

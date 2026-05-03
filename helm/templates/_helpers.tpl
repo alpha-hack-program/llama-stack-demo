@@ -24,6 +24,17 @@ Wrapped in "items" key because fromYaml doesn't handle root-level lists.
 {{- end -}}
 
 {{/*
+True when this model entry owns a KServe InferenceService (and optional OCI connection Secret).
+
+Excludes: .url (off-cluster / explicit endpoint), inline::sentence-transformers, and .forcedName
+(*-remote-style rows that reuse another predictor — no duplicate IS or modelcar URI secret).
+*/}}
+{{- define "rag-lsd.modelUsesKserve" -}}
+{{- $m := . -}}
+{{- if and (not $m.url) (not $m.forcedName) (ne (default "" $m.providerType) "inline::sentence-transformers") (or $m.image $m.connection) -}}true{{- end -}}
+{{- end -}}
+
+{{/*
 In-cluster OpenAI-compatible /v1 base URL for the KServe predictor <base>-predictor in the release
 namespace. Pass (dict "root" $ "model" <model>) from a range over allModels.
 

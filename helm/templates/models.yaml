@@ -3,7 +3,7 @@
 {{- $allModels := (include "allModels" . | fromYaml).items }}
 {{- range $allModels }}
 {{/* "Remote" provider entries (e.g. *-remote, forcedName) re-use an existing IS and have no image/connection */}}
-{{- if and (not .url) (or .image .connection) }}
+{{- if (include "rag-lsd.modelUsesKserve" . | trim) }}
 ---
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService

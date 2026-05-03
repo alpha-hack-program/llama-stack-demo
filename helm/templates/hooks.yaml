@@ -68,7 +68,9 @@ Generate the connects-to JSON for the deployment annotation
 {{- $connections := list -}}
 {{- $allModels := (include "allModels" . | fromYaml).items -}}
 {{- range $allModels -}}
+{{- if (include "rag-lsd.modelUsesKserve" . | trim) -}}
 {{- $connections = append $connections (dict "apiVersion" "apps/v1" "kind" "Deployment" "name" (printf "%s-predictor" .name)) -}}
+{{- end -}}
 {{- end -}}
 {{- range .Values.mcpServers -}}
 {{- $connections = append $connections (dict "apiVersion" "apps/v1" "kind" "Deployment" "name" .host) -}}
@@ -913,6 +915,10 @@ spec:
   template:
     metadata:
       name: {{ .Values.app }}-ragas-scheduler-{{ randAlphaNum 5 | lower }}
+      annotations:
+        # Opt out of namespace-level Python OTel injection (see setup-rbac-for-namespace.sh);
+        # this short-lived Job does not need the autoinstrumentation init container.
+        instrumentation.opentelemetry.io/inject-python: "false"
     spec:
       serviceAccountName: pipeline-runner
       restartPolicy: Never

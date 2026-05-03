@@ -1,7 +1,7 @@
 {{- $appName := .Values.app }}
 {{- $allModels := (include "allModels" . | fromYaml).items }}
 {{- range $allModels }}
-{{- if not .url }}
+{{- if and (not .url) (include "rag-lsd.modelUsesKserve" . | trim) }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor

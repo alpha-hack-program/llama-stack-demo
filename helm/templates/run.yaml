@@ -22,6 +22,7 @@ data:
       inference:
       {{- $allModels := (include "allModels" . | fromYaml).items }}
       {{- range $allModels }}
+      {{- if ne (default "" .providerType) "inline::sentence-transformers" }}
       - provider_id: {{ .name | replace " " "-" | lower }}
         provider_type: remote::vllm
         config:
@@ -37,17 +38,18 @@ data:
           max_tokens: ${env.{{ include "rag-lsd.envVarName" .name }}_MAX_TOKENS:=4096}
           {{- end }}
       {{- end }}
+      {{- end }}
       - provider_id: ${env.AWS_BEARER_TOKEN_BEDROCK:+bedrock}
         provider_type: remote::bedrock
         config:
           api_key: ${env.AWS_BEARER_TOKEN_BEDROCK:=}
           region_name: ${env.AWS_DEFAULT_REGION:=us-east-2}
-      {{- if and .Values.ragDefaults.embeddingModel (eq .Values.ragDefaults.embeddingModel.modelProvider "sentence-transformers") }}
+      # {{- if and .Values.ragDefaults.embeddingModel (eq .Values.ragDefaults.embeddingModel.modelProvider "sentence-transformers") }}
       - provider_id: sentence-transformers
         provider_type: inline::sentence-transformers
         config:
           trust_remote_code: true
-      {{- end }}
+      # {{- end }}
       - provider_id: ${env.WATSONX_API_KEY:+watsonx}
         provider_type: remote::watsonx
         config:
@@ -275,7 +277,16 @@ data:
       models:
       {{- $allModels2 := (include "allModels" . | fromYaml).items }}
       {{- range $allModels2 }}
-      {{- if .embeddingsModel }}
+      {{- if eq (default "" .providerType) "inline::sentence-transformers" }}
+      {{- if or .model .providerModelId }}
+      - metadata:
+          embedding_dimension: {{ .vectorDimension | default 768 }}
+        model_id: {{ .modelId | default (.name | replace " " "-" | lower) }}
+        provider_id: {{ .modelProvider | default "sentence-transformers" }}
+        provider_model_id: {{ .providerModelId | default .model }}
+        model_type: embedding
+      {{- end }}
+      {{- else if .embeddingsModel }}
       - metadata:
           embedding_dimension: {{ .vectorDimension }}
         model_id: {{ if .forcedName }}{{ .forcedName }}{{ else }}{{ .name }}{{ end }}

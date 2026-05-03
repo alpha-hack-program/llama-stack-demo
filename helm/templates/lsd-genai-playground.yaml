@@ -72,6 +72,7 @@ data:
       {{- $allModels := (include "allModels" . | fromYaml).items }}
       {{- $ns := .Release.Namespace }}
       {{- range $allModels }}
+      {{- if ne (default "" .providerType) "inline::sentence-transformers" }}
       - provider_id: {{ .name | replace " " "-" | lower }}
         provider_type: remote::vllm
         config:
@@ -89,6 +90,7 @@ data:
           {{- if .tls_verify }}
           tls_verify: {{ .tls_verify }}
           {{- end }}
+      {{- end }}
       {{- end }}
       vector_io:
       - provider_id: milvus
@@ -170,11 +172,13 @@ data:
           embedding_dimension: 768
       {{- $allModels := (include "allModels" . | fromYaml).items }}
       {{- range $allModels }}
+      {{- if ne (default "" .providerType) "inline::sentence-transformers" }}
       - provider_id: {{ .name | replace " " "-" | lower }}
         model_id: {{ .name | replace " " "-" | lower }}
         model_type: llm
         metadata:
           display_name: {{ .displayName }}
+      {{- end }}
       {{- end }}
       shields: []
       vector_dbs: []
