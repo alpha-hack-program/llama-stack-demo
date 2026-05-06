@@ -121,7 +121,7 @@ After workshop setup:
 
    ```bash
    PROJECT="llama-stack-demo-user1"   # replace with userN
-   helm install llama-stack-demo helm/ -f helm/values-workshop.yaml --set assigned="${PROJECT}" --namespace ${PROJECT} --timeout 20m
+   helm install llama-stack-demo helm/ -f helm/values.yaml --set assigned="${PROJECT}" --namespace ${PROJECT} --timeout 20m
    ```
 
 For GPU node assignment details, node labels, and other configuration, see [README.md](README.md).
