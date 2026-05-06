@@ -56,14 +56,9 @@ metadata:
 spec:
   mode: deployment
   replicas: 1
-  volumes:
-    - name: tls-certs
-      secret:
-        secretName: data-science-collector-tls
-  volumeMounts:
-    - name: tls-certs
-      mountPath: /etc/otel-collector/tls
-      readOnly: true
+  # Do not mount data-science-collector-tls: that secret is created for the RHOAI-managed
+  # collector and may be missing or renamed (e.g. 3.4). This collector does not reference
+  # those certs in config (OTLP in clear; exporter to workshop Tempo uses tls.insecure).
   config:
     processors:
       memory_limiter:
