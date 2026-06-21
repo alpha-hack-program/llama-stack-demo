@@ -140,27 +140,28 @@ def discover_mcp_tools(client: LlamaStackClient, tools: str) -> List[Dict[str, A
     tool_filter = (tools or "").strip().lower()
     if not tool_filter or tool_filter == "none":
         return []
-    tool_groups = list(client.toolgroups.list())
+    try:
+        response = client.get('/v1/tools', cast_to=object)
+        all_tools = response.get("data", []) if isinstance(response, dict) else []
+    except Exception:
+        return []
     requested = [] if tool_filter == "all" else [t.strip().lower() for t in tools.split(",") if t.strip()]
+    seen = set()
     mcp_tools = []
-    for group in tool_groups:
-        if not getattr(group, "identifier", "").startswith("mcp::"):
+    for tool in all_tools:
+        tg_id = tool.get("toolgroup_id", "")
+        if not tg_id.startswith("mcp::"):
             continue
-        if getattr(group, "provider_id", None) and getattr(group, "provider_id") != "model-context-protocol":
+        if tg_id in seen:
             continue
-        tool_name = (group.identifier.split("::", 1)[1] if "::" in group.identifier else group.identifier).lower()
+        seen.add(tg_id)
+        tool_name = tg_id.split("::", 1)[1].lower()
         if requested and tool_name not in requested:
             continue
-        mcp_endpoint = getattr(group, "mcp_endpoint", None)
-        server_url = None
-        if mcp_endpoint:
-            server_url = getattr(mcp_endpoint, "uri", None) or (mcp_endpoint.get("uri") if isinstance(mcp_endpoint, dict) else None)
-        if server_url:
-            mcp_tools.append({
-                "type": "mcp",
-                "server_label": tool_name,
-                "server_url": server_url,
-            })
+        mcp_tools.append({
+            "type": "mcp",
+            "server_label": tool_name,
+        })
     return mcp_tools
 
 

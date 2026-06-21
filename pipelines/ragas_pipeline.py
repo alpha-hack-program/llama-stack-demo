@@ -95,62 +95,46 @@ def discover_mcp_tools(
     mcp_tools = []
 
     try:
-        tool_groups = list(client.toolgroups.list())
+        response = client.get('/v1/tools', cast_to=object)
+        all_tools = response.get("data", []) if isinstance(response, dict) else []
     except Exception as e:
-        raise ValueError(f"Failed to list tool groups from Llama Stack: {e}") from e
-
-    print(f"   Found {len(tool_groups)} tool groups")
+        raise ValueError(f"Failed to list tools from Llama Stack: {e}") from e
 
     requested_tools = []
     if tool_filter.lower() != "all":
         requested_tools = [t.strip().lower() for t in tool_filter.split(",") if t.strip()]
 
+    seen = set()
     found_tools = []
 
-    for group in tool_groups:
-        if not hasattr(group, "identifier"):
+    for tool in all_tools:
+        tg_id = tool.get("toolgroup_id", "")
+        if not tg_id.startswith("mcp::"):
             continue
-
-        identifier = group.identifier
-        provider_id = getattr(group, "provider_id", None)
-
-        if not identifier.startswith("mcp::"):
+        if tg_id in seen:
             continue
-        if provider_id and provider_id != "model-context-protocol":
-            continue
+        seen.add(tg_id)
 
-        tool_name = identifier.split("::", 1)[1] if "::" in identifier else identifier
+        tool_name = tg_id.split("::", 1)[1]
 
         if tool_filter.lower() != "all":
             if tool_name.lower() not in requested_tools:
                 continue
 
-        mcp_endpoint = getattr(group, "mcp_endpoint", None)
-        server_url = None
-        if mcp_endpoint:
-            if hasattr(mcp_endpoint, "uri"):
-                server_url = mcp_endpoint.uri
-            elif isinstance(mcp_endpoint, dict):
-                server_url = mcp_endpoint.get("uri")
+        mcp_tools.append({
+            "type": "mcp",
+            "server_label": tool_name,
+        })
+        found_tools.append(tool_name.lower())
+        print(f"   [OK] Found MCP tool: {tool_name}")
 
-        if server_url:
-            mcp_tools.append({
-                "type": "mcp",
-                "server_label": tool_name,
-                "server_url": server_url,
-            })
-            found_tools.append(tool_name.lower())
-            print(f"   [OK] Found MCP tool: {tool_name} ({server_url})")
-        else:
-            print(f"   [WARN] Skipping {tool_name} (no server URL found)")
+    print(f"   Found {len(seen)} MCP tool group(s) total")
 
     if requested_tools:
         missing_tools = [t for t in requested_tools if t not in found_tools]
         if missing_tools:
             available_mcp_tools = [
-                g.identifier.split("::", 1)[1]
-                for g in tool_groups
-                if hasattr(g, "identifier") and g.identifier.startswith("mcp::")
+                tg.split("::", 1)[1] for tg in seen
             ]
             raise ValueError(
                 f"Requested MCP tools not found: {missing_tools}. "

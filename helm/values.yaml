@@ -106,8 +106,7 @@ pipelines:
   # Git repository for pipeline definitions
   git:
     repo: https://github.com/alpha-hack-program/llama-stack-demo.git
-    # ref: main
-    ref: 3.4.0.ea2
+    ref: main
     context: pipelines
   # Comma-separated list of pipeline names (without .py extension)
   names: "rag_pipeline, ragas_pipeline"
