@@ -22,7 +22,7 @@ from llama_stack_client.types import VectorStore
 
 from portazgo import Agent, discover_mcp_tools, resolve_vector_store_id
 
-from utils import create_client, list_models, get_rag_context
+from utils import create_client, list_models, get_rag_context, list_tool_groups, _list_all_tools
 
 # Initialize FastAPI app with enhanced OpenAPI configuration
 app = FastAPI(
@@ -459,15 +459,15 @@ async def get_models(
         if provider:
             models = [m for m in models if m.provider_id == provider]
         if type:
-            models = [m for m in models if m.api_model_type == type]
-        
+            models = [m for m in models if getattr(m, 'model_type', None) == type]
+
         # Convert to response model
         result = []
         for model in models:
             result.append(ModelResponse(
                 identifier=model.identifier,
                 provider_id=model.provider_id,
-                api_model_type=model.api_model_type,
+                api_model_type=getattr(model, 'model_type', 'unknown'),
                 provider_resource_id=getattr(model, 'provider_resource_id', None),
                 metadata=getattr(model, 'metadata', None)
             ))
@@ -517,7 +517,7 @@ async def get_model_info(model_identifier: str):
         return ModelResponse(
             identifier=model.identifier,
             provider_id=model.provider_id,
-            api_model_type=model.api_model_type,
+            api_model_type=getattr(model, 'model_type', 'unknown'),
             provider_resource_id=getattr(model, 'provider_resource_id', None),
             metadata=getattr(model, 'metadata', None)
         )
@@ -552,25 +552,19 @@ async def get_tool_groups():
     """
     try:
         client = get_client()
-        tool_groups = list(client.toolgroups.list())
-        
-        # Convert to response model
+        groups = list_tool_groups(client)
+
         result = []
-        for group in tool_groups:
-            # Try to get tool count
-            tool_count = None
-            try:
-                tools_response = client.tools.list(toolgroup_id=group.identifier)
-                tool_count = len(list(tools_response)) if tools_response else 0
-            except Exception:
-                pass
-            
+        for group in groups:
+            identifier = group.get("identifier", "N/A") if isinstance(group, dict) else getattr(group, "identifier", "N/A")
+            provider_id = group.get("provider_id") if isinstance(group, dict) else getattr(group, "provider_id", None)
+            tools_list = group.get("tools", []) if isinstance(group, dict) else []
             result.append(ToolGroupResponse(
-                identifier=group.identifier if hasattr(group, 'identifier') else 'N/A',
-                provider_id=getattr(group, 'provider_id', None),
-                tool_count=tool_count
+                identifier=identifier,
+                provider_id=provider_id,
+                tool_count=len(tools_list)
             ))
-        
+
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching tool groups: {str(e)}")
@@ -607,43 +601,30 @@ async def get_tools(
     """
     try:
         client = get_client()
-        tool_groups = list(client.toolgroups.list())
-        
-        if not tool_groups:
+        all_tools = _list_all_tools(client)
+
+        if not all_tools:
             return []
-        
-        # Filter tool groups if needed
+
+        # Filter by toolgroup if requested
         if group:
-            selected_groups = [g for g in tool_groups if 
-                              (hasattr(g, 'identifier') and g.identifier == group)]
-            if not selected_groups:
+            filtered = [t for t in all_tools if t.get("toolgroup_id") == group]
+            if not filtered:
                 raise HTTPException(status_code=404, detail=f"Tool group '{group}' not found")
         elif all:
-            selected_groups = tool_groups
+            filtered = all_tools
         else:
             return []
-        
-        # Collect all tools
+
         result = []
-        for tg in selected_groups:
-            group_identifier = tg.identifier if hasattr(tg, 'identifier') else None
-            if not group_identifier:
-                continue
-            
-            try:
-                tools_response = client.tools.list(toolgroup_id=group_identifier)
-                tools = list(tools_response) if tools_response else []
-                
-                for tool in tools:
-                    result.append(ToolResponse(
-                        name=getattr(tool, 'name', 'Unknown'),
-                        description=getattr(tool, 'description', None),
-                        type=getattr(tool, 'type', None),
-                        parameters=getattr(tool, 'parameters', None) if hasattr(tool, 'parameters') else None
-                    ))
-            except Exception:
-                continue
-        
+        for tool in filtered:
+            result.append(ToolResponse(
+                name=tool.get("name", "Unknown"),
+                description=tool.get("description"),
+                type=tool.get("type"),
+                parameters=tool.get("input_schema"),
+            ))
+
         return result
     except HTTPException:
         raise

@@ -44,3 +44,5 @@ helm/values-secrets.yaml
 # Htpasswd files (contain passwords)
 htpasswd.dry-run
 htpasswd.workshop
+htpasswd.workshop.README.txt
+htpasswd.*.README.txt

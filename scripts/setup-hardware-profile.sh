@@ -47,6 +47,14 @@ if [[ "$DRY_RUN" -eq 0 ]]; then
   fi
 fi
 
+# Skip when the HardwareProfile CRD is not present (OpenShift AI not installed).
+api_group_available() { oc get --raw "/apis/$1" >/dev/null 2>&1; }
+if [[ "$DRY_RUN" -eq 0 ]] && ! api_group_available infrastructure.opendatahub.io; then
+  echo "HardwareProfile CRD not present (infrastructure.opendatahub.io); OpenShift AI not installed?"
+  echo "Skipping hardware profile setup. Install OpenShift AI, then re-run."
+  exit 0
+fi
+
 echo "Creating HardwareProfile in ${NAMESPACE}..."
 
 # Ensure namespace exists (OpenShift AI operator typically creates it)

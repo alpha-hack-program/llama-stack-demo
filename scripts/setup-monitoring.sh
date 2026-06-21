@@ -46,12 +46,30 @@ fi
 echo "Applying general monitoring manifests from: $MANIFESTS_DIR"
 echo ""
 
+# True if the cluster serves the given API group (operator installed). Targeted
+# discovery call — reliable even when an unrelated aggregated APIService flakes.
+api_group_available() { oc get --raw "/apis/$1" >/dev/null 2>&1; }
+
 # Apply only full resource manifests (namespace, Tempo, OTel collector, Instrumentation). Do not apply
 # dsci-monitoring-patch.yaml here — it is a merge patch (no apiVersion/kind), used below with oc patch.
+# Skip a manifest when its operator/CRD is absent so the apply does not hard-fail.
 for f in namespace.yaml tempo-monolithic.yaml otel-collector.yaml data-science-instrumentation.yaml; do
-  if [[ -f "$MANIFESTS_DIR/$f" ]]; then
-    run oc apply -f "$MANIFESTS_DIR/$f"
+  [[ -f "$MANIFESTS_DIR/$f" ]] || continue
+  if [[ "$DRY_RUN" == false ]]; then
+    case "$f" in
+      tempo-monolithic.yaml)
+        if ! api_group_available tempo.grafana.com; then
+          echo "Tempo operator not installed (tempo.grafana.com); skipping $f."
+          continue
+        fi ;;
+      otel-collector.yaml|data-science-instrumentation.yaml)
+        if ! api_group_available opentelemetry.io; then
+          echo "OpenTelemetry operator not installed (opentelemetry.io); skipping $f."
+          continue
+        fi ;;
+    esac
   fi
+  run oc apply -f "$MANIFESTS_DIR/$f"
 done
 
 # 4. Patch DSCInitialization so the OpenShift AI operator deploys the monitoring stack

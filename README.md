@@ -495,6 +495,40 @@ oc delete project ${PROJECT}
 
 ## Monitoring
 
+Observability is split into two independent layers:
+
+1. **Telemetry collection (default, always on).** Metrics, traces and the cluster
+   monitoring stack: `ServiceMonitor`s deployed by the chart, plus the cluster-wide
+   Tempo / OpenTelemetry collector / Prometheus provisioned by
+   `scripts/setup-monitoring.sh` (and the DSCInitialization monitoring patch). This
+   layer needs the **Tempo Operator**, **Red Hat build of OpenTelemetry**, and the
+   RHOAI monitoring stack — all part of a standard RHOAI install. Nothing extra to do.
+
+2. **Dashboards (optional, OFF by default).** The chart can also create Grafana
+   dashboard objects (`Grafana`, `GrafanaFolder`, `GrafanaDashboard`,
+   `GrafanaDatasource` — group `grafana.integreatly.org`). These require the
+   **community Grafana Operator**, which is *not* included with OpenShift/RHOAI, so
+   they are disabled by default (`monitoring.enable: false`). A plain
+   `helm install` therefore works on any cluster.
+
+   To opt in (only on a cluster where the Grafana Operator is installed):
+
+   ```bash
+   helm upgrade --install llama-stack-demo helm/ \
+     --set monitoring.enable=true \
+     --namespace <project> --timeout 20m
+   ```
+
+   If you set `monitoring.enable=true` without the Grafana Operator, Helm fails with
+   `no matches for kind "GrafanaDashboard" in version "grafana.integreatly.org/v1beta1"`.
+
+> **Future direction:** the Red Hat–documented path is moving to **Perses** dashboards
+> via the **Cluster Observability Operator** (Technology Preview in RHOAI 3.2). Migrating
+> the chart's dashboards from the community Grafana Operator to Perses is planned as a
+> separate effort. See the RHOAI
+> [Managing observability](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.2/html/managing_openshift_ai/managing-observability_managing-rhoai)
+> chapter.
+
 ### Enable OpenTelemetry Tracing
 
 The system supports OpenTelemetry tracing when `otelCollector.enabled: true`. Configure your DSCInitialization:

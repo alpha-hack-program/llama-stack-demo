@@ -53,6 +53,14 @@ if [[ "$DRY_RUN" -eq 0 ]]; then
   fi
 fi
 
+# Skip when the MLflow operator (CRD) is not installed.
+api_group_available() { oc get --raw "/apis/$1" >/dev/null 2>&1; }
+if [[ "$DRY_RUN" -eq 0 ]] && ! api_group_available mlflow.opendatahub.io; then
+  echo "MLflow operator not installed (no mlflow.opendatahub.io API group); skipping MLflow CR."
+  echo "Install the MLflow operator, then re-run."
+  exit 0
+fi
+
 echo "Applying cluster-scoped MLflow CR..."
 run oc apply -f "$MLFLOW_MANIFEST"
 if [[ "$DRY_RUN" -eq 0 ]]; then

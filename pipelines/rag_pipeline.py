@@ -26,7 +26,7 @@ from shared.pipeline_egress import apply_rag_configmap_as_env
 # https://github.com/red-hat-data-services/rhoai-disconnected-install-helper/blob/main/rhoai-2.23.md
 PYTORCH_CUDA_IMAGE = "quay.io/modh/odh-pipeline-runtime-pytorch-cuda-py312-ubi9@sha256:72ff2381e5cb24d6f549534cb74309ed30e92c1ca80214669adb78ad30c5ae12"
 
-LLAMA_STACK_CLIENT_VERSION = "0.6.1"
+LLAMA_STACK_CLIENT_VERSION = "0.7.2"
 
 @dsl.component(
     base_image=PYTORCH_CUDA_IMAGE,

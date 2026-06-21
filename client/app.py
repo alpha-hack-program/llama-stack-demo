@@ -85,12 +85,16 @@ def fetch_mcp_tool_names() -> List[str]:
     """Fetch available MCP tool group names from LlamaStack."""
     try:
         client = get_cached_client()
-        tool_groups = list(client.toolgroups.list())
-        return [
-            g.identifier.split("::", 1)[1] if "::" in g.identifier else g.identifier
-            for g in tool_groups
-            if getattr(g, "identifier", "").startswith("mcp::")
-        ]
+        from utils import _list_all_tools
+        all_tools = _list_all_tools(client)
+        seen = set()
+        names = []
+        for t in all_tools:
+            tg_id = t.get("toolgroup_id", "")
+            if tg_id.startswith("mcp::") and tg_id not in seen:
+                seen.add(tg_id)
+                names.append(tg_id.split("::", 1)[1])
+        return names
     except Exception:
         return []
 

@@ -120,6 +120,14 @@ if [[ "$SKIP_INSTRUMENTATION" != true && "$LENIENT" != true ]]; then
   fi
 fi
 
+# Informational: the Grafana dashboard layer is optional and OFF by default. The
+# telemetry checks above are independent of it; this never affects the exit code.
+if oc get --raw /apis/grafana.integreatly.org >/dev/null 2>&1; then
+  echo "  INFO Grafana operator present — optional dashboards available (helm --set monitoring.enable=true)"
+else
+  echo "  INFO Grafana operator absent — Grafana dashboards are optional and OFF by default"
+fi
+
 echo ""
 if [[ $FAILED -eq 0 ]]; then
   echo "All checks passed. Monitoring and telemetry are in place."

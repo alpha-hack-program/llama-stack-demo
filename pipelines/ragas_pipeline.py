@@ -37,8 +37,8 @@ PYTORCH_IMAGE = "quay.io/modh/odh-pipeline-runtime-pytorch-cuda-py312-ubi9@sha25
 
 DEFAULT_METRICS = "answer_relevancy,faithfulness,context_precision,context_recall,answer_correctness"
 
-LLAMA_STACK_CLIENT_VERSION = "0.6.1"
-PORTAZGO_VERSION = "0.3.1"
+LLAMA_STACK_CLIENT_VERSION = "0.7.2"
+PORTAZGO_VERSION = "0.4.1"
 
 @dsl.component(
     base_image=PYTORCH_IMAGE,

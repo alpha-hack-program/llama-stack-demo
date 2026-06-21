@@ -22,7 +22,7 @@ Use `workshop-setup.sh` to create the full workshop environment: users (via htpa
 1. **Generates htpasswd file** — Always runs `setup-htpasswd-oauth.sh` in dry-run mode. Writes the htpasswd file (default: `htpasswd.workshop`) and prints instructions for the Administrator to apply it manually to the cluster OAuth.
 2. **Creates projects** — `llama-stack-demo-user1`, `llama-stack-demo-user2`, ... with labels `modelmesh-enabled=false` and `opendatahub.io/dashboard=true`.
 3. **Creates group and permissions** — Creates group `workshop` with users `user1..userN`, grants each user admin and ServiceMonitor access on their project (idempotent; safe to re-run).
-4. **Sets up monitoring and cluster resources** — Runs `setup-monitoring.sh` (Tempo, OTel, DSCI), `setup-hardware-profile.sh` (HardwareProfile in redhat-ods-applications), `setup-rbac.sh` (configmap-patcher ClusterRole/Role per namespace), and `setup-grafana-proxy-rbac.sh` (Grafana proxy RBAC per namespace).
+4. **Sets up monitoring and cluster resources** — Runs `setup-monitoring.sh` (Tempo, OTel, DSCI), `setup-hardware-profile.sh` (HardwareProfile in redhat-ods-applications), `setup-rbac.sh` (configmap-patcher ClusterRole/Role per namespace), and `setup-grafana-proxy-rbac.sh` (Grafana proxy RBAC per namespace). This provisions the **telemetry layer** (metrics/traces) only. Grafana **dashboards** are optional and **off by default** (`monitoring.enable: false`) since they need the community Grafana Operator; opt in per deploy with `--set monitoring.enable=true`. (Documented forward path: Perses via the Cluster Observability Operator — planned separately.)
 5. **Assigns nodes** — Runs `assign-nodes-to-users.sh` to label one node per user (unless `--no-assign` is passed).
 
 ### Usage

@@ -54,6 +54,22 @@ if [[ "$DRY_RUN" -eq 0 ]]; then
   fi
 fi
 
+# Skip when Argo CD (openshift-gitops) is not installed, or when the MinIO
+# Application already exists. Read-only checks; only when actually applying.
+api_group_available() { oc get --raw "/apis/$1" >/dev/null 2>&1; }
+if [[ "$DRY_RUN" -eq 0 ]]; then
+  if ! oc get namespace "$ARGOCD_NS" &>/dev/null || ! api_group_available argoproj.io; then
+    echo "Argo CD (${ARGOCD_NS}) not installed; skipping MinIO setup."
+    echo "Install the OpenShift GitOps operator or deploy MinIO manually, then re-run."
+    exit 0
+  fi
+  # Use the fully-qualified resource; bare "application" is ambiguous across groups.
+  if oc get applications.argoproj.io minio -n "$ARGOCD_NS" &>/dev/null; then
+    echo "MinIO Argo CD Application already exists in ${ARGOCD_NS}; skipping."
+    exit 0
+  fi
+fi
+
 if [[ -z "${CLUSTER_DOMAIN:-}" ]]; then
   if [[ "$DRY_RUN" -eq 1 ]]; then
     CLUSTER_DOMAIN="cluster.example.com"

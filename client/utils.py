@@ -52,9 +52,10 @@ def get_embedding_model(
     models = client.models.list()
     print(f"Models: {models}")
     for model in models:
-        print(f"Model: {model.identifier} {model.provider_id} {model.api_model_type}")
+        model_type = getattr(model, "model_type", None) or (model.custom_metadata or {}).get("model_type")
+        print(f"Model: {model.identifier} {model.provider_id} {model_type}")
         print(f"Embedding model ID: {embedding_model_id} {embedding_model_provider}")
-        if model.identifier == embedding_model_id and model.provider_id == embedding_model_provider and model.api_model_type == "embedding":
+        if model.identifier == embedding_model_id and model.provider_id == embedding_model_provider and model_type == "embedding":
             return model
     
     raise ValueError(f"Embedding model {embedding_model_id} not found for provider {embedding_model_provider}")
@@ -216,64 +217,29 @@ Use the following context to answer the question. If the question is not related
 """
 
 
+def _list_all_tools(client: LlamaStackClient) -> list:
+    """List all tools via /v1/tools endpoint (works with llama-stack-client 0.7+)."""
+    try:
+        response = client.get('/v1/tools', cast_to=object)
+        return response.get("data", []) if isinstance(response, dict) else []
+    except Exception:
+        return []
+
+
 def list_tool_groups(client: LlamaStackClient) -> List:
     """
-    List all available tool groups from LlamaStack.
-    
-    Args:
-        client: The LlamaStack client
-    
-    Returns:
-        List of ToolGroup objects
-        
-    Raises:
-        Exception: If there's an error fetching tool groups
-    """
-    return list(client.toolgroups.list())
+    List unique tool groups derived from /v1/tools.
 
-
-def get_mcp_server_url(tool_group) -> Optional[str]:
+    Returns list of dicts with 'identifier', 'provider_id', and 'tools' keys.
     """
-    Extract MCP server URL from a tool group object.
-    
-    This function checks multiple possible locations for the server URL:
-    - mcp_endpoint.uri attribute
-    - mcp_endpoint dict with 'uri' key
-    - mcp_endpoint as a string
-    - provider_resource_url attribute
-    - metadata dict with 'url' or 'mcp_endpoint' keys
-    
-    Args:
-        tool_group: A tool group object from LlamaStack
-    
-    Returns:
-        Server URL string if found, None otherwise
-    """
-    # Check mcp_endpoint attribute
-    if hasattr(tool_group, 'mcp_endpoint'):
-        mcp_endpoint = tool_group.mcp_endpoint
-        
-        # Try to get URI from mcp_endpoint object
-        if hasattr(mcp_endpoint, 'uri'):
-            return mcp_endpoint.uri
-        
-        # Try mcp_endpoint as a dict
-        if isinstance(mcp_endpoint, dict) and 'uri' in mcp_endpoint:
-            return mcp_endpoint['uri']
-        
-        # Try mcp_endpoint as a string
-        if isinstance(mcp_endpoint, str):
-            return mcp_endpoint
-    
-    # Check provider_resource_url attribute
-    if hasattr(tool_group, 'provider_resource_url'):
-        return tool_group.provider_resource_url
-    
-    # Check metadata dict
-    if hasattr(tool_group, 'metadata') and isinstance(tool_group.metadata, dict):
-        return tool_group.metadata.get('url') or tool_group.metadata.get('mcp_endpoint')
-    
-    return None
+    all_tools = _list_all_tools(client)
+    groups: dict = {}
+    for tool in all_tools:
+        tg_id = tool.get("toolgroup_id", "")
+        if tg_id not in groups:
+            groups[tg_id] = {"identifier": tg_id, "provider_id": None, "tools": []}
+        groups[tg_id]["tools"].append(tool)
+    return list(groups.values())
 
 
 def discover_tools(
@@ -285,63 +251,54 @@ def discover_tools(
 ) -> List[dict]:
     """
     Auto-discover available tools from LlamaStack server.
-    
+
     This function discovers and configures tools based on available tool groups:
     - Web search tools (builtin::websearch)
     - File search/RAG tools (builtin::rag) - requires vector_store_name
     - MCP server tools (mcp::*)
-    
+
     Args:
         client: The LlamaStack client
         vector_store_name: Name of vector store for file_search tools (optional)
         include_web_search: Include web search tools if available (default: True)
         include_file_search: Include file search tools if available (default: True)
         include_mcp: Include MCP server tools if available (default: True)
-    
+
     Returns:
-        List of tool configuration dicts ready for LlamaStack API
-        
-    Example:
-        tools = discover_tools(client, vector_store_name="my-store")
-        # Returns:
-        # [
-        #     {"type": "web_search"},
-        #     {"type": "file_search", "vector_store_ids": ["vs_123"]},
-        #     {"type": "mcp", "server_label": "my-server", "server_url": "https://..."}
-        # ]
+        Tuple of (tool_configs, skipped_descriptions)
     """
     from vector_stores import list_vector_stores
-    
+
     tools = []
     skipped = []
-    
+
     # Get vector store ID if needed for file_search
     vector_store_id = None
     if include_file_search and vector_store_name:
         try:
             vector_stores = list_vector_stores(client, vector_store_name)
             if vector_stores:
-                vector_store_id = vector_stores[0].identifier
+                vector_store_id = vector_stores[0].id
         except Exception:
             pass
-    
-    # Fetch tool groups
+
+    # Fetch tool groups (now returns list of dicts)
     try:
         tool_groups = list_tool_groups(client)
     except Exception as e:
         raise RuntimeError(f"Failed to fetch tool groups: {e}")
-    
+
     # Process each tool group
+    seen_mcp = set()
     for group in tool_groups:
-        if not hasattr(group, 'identifier'):
+        identifier = group.get("identifier", "") if isinstance(group, dict) else getattr(group, "identifier", "")
+        if not identifier:
             continue
-        
-        identifier = group.identifier
-        
+
         # Web search tools
         if include_web_search and (identifier.startswith('builtin::websearch') or identifier.startswith('builtin::web_search')):
             tools.append({"type": "web_search"})
-        
+
         # File search / RAG tools
         elif include_file_search and (identifier.startswith('builtin::rag') or identifier.startswith('builtin::file_search')):
             if vector_store_id:
@@ -351,18 +308,15 @@ def discover_tools(
                 })
             else:
                 skipped.append(f"{identifier} (no vector store)")
-        
+
         # MCP server tools
         elif include_mcp and identifier.startswith('mcp::'):
-            server_url = get_mcp_server_url(group)
-            if server_url:
+            if identifier not in seen_mcp:
+                seen_mcp.add(identifier)
                 server_name = identifier.split('::', 1)[1] if '::' in identifier else identifier
                 tools.append({
                     "type": "mcp",
                     "server_label": server_name,
-                    "server_url": server_url
                 })
-            else:
-                skipped.append(f"{identifier} (no server URL)")
-    
+
     return tools, skipped
