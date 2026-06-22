@@ -781,7 +781,6 @@ def generate_ragas_dataset(
         "ragas",
         "langchain-openai",
         "langchain-community",
-        "langchain-google-vertexai",
     ],
 )
 def run_ragas_evaluation(
@@ -1015,8 +1014,25 @@ def run_ragas_evaluation(
         embeddings = _LlamaStackEmbeddings(client, embedding_model_id_inner)
         return llm, embeddings
 
+    def _patch_langchain_vertexai():
+        """Shim for langchain_community.chat_models.vertexai — removed in
+        langchain-community>=0.3.0 but ragas<=0.4.3 still imports ChatVertexAI
+        from it. The stub is a real class so isinstance() checks return False
+        instead of crashing."""
+        import importlib, sys, types
+        mod_path = "langchain_community.chat_models.vertexai"
+        if mod_path in sys.modules:
+            return
+        try:
+            importlib.import_module(mod_path)
+        except (ImportError, ModuleNotFoundError):
+            stub = types.ModuleType(mod_path)
+            stub.ChatVertexAI = type("ChatVertexAI", (), {})
+            sys.modules[mod_path] = stub
+
     def _import_ragas():
         try:
+            _patch_langchain_vertexai()
             from ragas import EvaluationDataset, SingleTurnSample, evaluate
             from ragas.metrics._faithfulness import faithfulness
             from ragas.metrics._answer_relevance import answer_relevancy
