@@ -780,6 +780,8 @@ def generate_ragas_dataset(
         "httpx",
         "ragas",
         "langchain-openai",
+        "langchain-community",
+        "langchain-google-vertexai",
     ],
 )
 def run_ragas_evaluation(
